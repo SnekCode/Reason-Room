@@ -1,0 +1,139 @@
+{
+  "schema_version": 6,
+  "workspace_id": "layered-example",
+  "title": "Layered Example",
+  "custom_types": [],
+  "current_state": {
+    "id": "current",
+    "title": "Current State",
+    "concepts": [
+      {
+        "id": 1,
+        "type_id": "team",
+        "title": "Billing Team",
+        "summary": "Runs billing.",
+        "details": "",
+        "attributes": {}
+      },
+      {
+        "id": 2,
+        "type_id": "service",
+        "title": "Billing API",
+        "summary": "Handles billing requests.",
+        "details": "",
+        "attributes": {}
+      }
+    ],
+    "relationships": [
+      {
+        "id": "team-operates-api",
+        "kind": "operates",
+        "source_id": 1,
+        "target_id": 2,
+        "label": "operates"
+      }
+    ],
+    "lenses": [
+      {
+        "id": "canvas",
+        "title": "Canvas",
+        "filter": {},
+        "placements": [
+          {
+            "concept_id": 1,
+            "bounds": {
+              "origin": {
+                "x": 0,
+                "y": 0
+              },
+              "size": {
+                "x": 240,
+                "y": 120
+              }
+            }
+          },
+          {
+            "concept_id": 2,
+            "bounds": {
+              "origin": {
+                "x": 400,
+                "y": 0
+              },
+              "size": {
+                "x": 240,
+                "y": 120
+              }
+            }
+          }
+        ],
+        "template": "ownership",
+        "visual_boundaries": [
+          {
+            "id": "billing-area",
+            "title": "Billing context",
+            "summary": "Visual grouping only.",
+            "bounds": {
+              "origin": {
+                "x": -40,
+                "y": -40
+              },
+              "size": {
+                "x": 720,
+                "y": 240
+              }
+            }
+          }
+        ],
+        "semantic_zoom_layers": [
+          {
+            "id": "overview",
+            "title": "Overview",
+            "percent_settings": {
+              "active_zoom_range": {
+                "start_percent": 1,
+                "end_percent": 100
+              },
+              "fade_percent": 0
+            },
+            "card_scale": 1,
+            "concept_ids": [
+              1
+            ],
+            "relationship_ids": [
+              "team-operates-api"
+            ]
+          },
+          {
+            "id": "detail",
+            "title": "Detail",
+            "percent_settings": {
+              "active_zoom_range": {
+                "start_percent": 100,
+                "end_percent": 1000
+              },
+              "fade_percent": 10
+            },
+            "card_scale": 1,
+            "concept_ids": [
+              2
+            ]
+          }
+        ],
+        "semantic_zoom_card_modes": [
+          {
+            "concept_id": 1,
+            "mode": {
+              "manual": {
+                "layer_ids": [
+                  "overview",
+                  "detail"
+                ]
+              }
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "planning_scenarios": []
+}

@@ -31,7 +31,7 @@ crates/app                       web/index.html + crates/app
 
 This crate owns the pure domain and canvas behavior. It contains workspace
 data types, validation, geometry, camera transformations, visibility queries,
-relationship routing, containment, and generated data. It does not depend on
+relationship routing, spatial containment, and generated data. It does not depend on
 the UI framework or on file persistence.
 
 ### `crates/workspace-session`
@@ -73,9 +73,20 @@ concepts and typed relationships plus one or more lenses. A lens contains
 placements, visual boundaries, semantic zoom layers, and the presentation
 settings that control what the canvas shows at each scale.
 
-The model distinguishes graph facts from visual context. Relationships express
-typed connections. Placement, containment, visual boundaries, and zoom layers
-describe how the graph appears in a lens.
+The model distinguishes graph assertions from visual context. A typed
+`contains` relationship is an explicit statement about the mapped system.
+Spatial containment means one card is drawn inside another; it affects
+composition but does not create that statement. Positions, visual boundaries,
+and zoom layers belong to a lens rather than to the shared concept.
+
+The UI calls a saved lens a View and a visible concept representation a Card.
+These existing names are documented as aliases, not a settled terminology
+policy. See the [user guide](docs/using-reason-room.md#understand-the-names-on-screen)
+and [current file-format reference](docs/workspace-schema.md).
+
+The current schema supports eight built-in concept types plus declared custom
+types, and seven relationship kinds with endpoint constraints. Broader product
+plans for flexible vocabulary do not remove those current validation rules.
 
 ## Persistence
 
@@ -91,6 +102,12 @@ sibling `.bak` backup, writes a temporary candidate, replaces the active file,
 and reads and validates the exact persisted source. If the final verification
 fails, it tries to restore the previous source and leaves the backup in place.
 
+The desktop app polls its open file for external changes and defers reload
+while active authoring would be interrupted. MCP uses a separate session for
+each call; it has no shared in-memory history or UI-control channel. Coordinate
+human and agent writes because per-save conflict checks are not a cross-process
+editing lock or a multi-call transaction.
+
 ### Browser
 
 The WebAssembly build has no ambient desktop-path access. A person selects a
@@ -99,8 +116,18 @@ The current workspace is serialized to `localStorage` for the same browser
 origin and restored after a page reload. Save and Save As create browser
 downloads; they do not write back to the selected source file.
 
+The optional browser file-handle connection can poll a user-selected file and
+refresh the browser canvas when safe. Ordinary import does not create this
+connection. Neither path writes browser edits back to that file.
+
 Browser storage follows the browser profile's retention and access rules. It
 is not a substitute for a downloaded backup of important work.
+
+### State Outside the Workspace
+
+The version 6 JSON document stores no camera, saved query, undo/redo history,
+or application preferences. The app keeps camera and preference state outside
+that document. CLI and MCP query arguments are requests, not saved fields.
 
 ## Design Rules
 
@@ -119,5 +146,7 @@ is not a substitute for a downloaded backup of important work.
   process.
 - [WebAssembly browser build](docs/webassembly.md) documents generated files
   and static hosting.
-- [Product vision](docs/product/vision.md) explains the product-discovery
-  scope.
+- [Workspace format](docs/workspace-schema.md) documents the current persisted shape.
+- [MCP support](docs/product/external-agent-support.md) documents the agent boundary.
+- [Product vision](docs/product/vision.md) is future direction, not a current specification.
+- [Documentation history](docs/history.md) locates archived design evidence.

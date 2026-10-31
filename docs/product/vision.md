@@ -1,5 +1,9 @@
 # Product Vision
 
+> **Planning document.** This describes intended experience and open questions,
+> not a guarantee of current capabilities. For current behavior, read the
+> [user guide](../using-reason-room.md) and [validation status](../validation.md).
+
 ## Product Intent
 
 Large organizations contain overlapping teams, systems, accounts, services,

@@ -1,134 +1,165 @@
 # Reason Room Domain
 
-This glossary defines the concepts used to map organizational work, dependencies, and operating environments. It is the canonical vocabulary for workspace schema, canvas behavior, and agent-readable queries.
+These definitions distinguish the information being mapped from its visual
+presentation. Product terminology is still under review; this glossary does
+not resolve the choice between existing UI and technical names. The
+[user guide](docs/using-reason-room.md#understand-the-names-on-screen) explains
+how those names currently relate.
 
-## Spatial Model
+## Document and Perspectives
 
-**Lens**:
-A dynamic filtered perspective over the workspace graph. A lens determines which concepts and relationships are relevant to a question or dimension.
-_Avoid_: Layer when the filtering behavior is intended
-
-**Lens Template**:
-A provided starting definition for a lens. Applying a lens template creates an editable dynamic lens; it does not impose a fixed view or a global traversal rule.
-_Avoid_: Fixed layer, unchangeable view
-
-**Lens Layout**:
-The manually arranged positions of concepts within one lens. Changing a placement changes that lens only and does not alter the concept or its placements in other lenses.
-_Avoid_: Global layout
-
-**Visual Boundary**:
-A named, Lens-local rectangular area that gives part of a map visual context.
-It does not store member cards and does not create containment, ownership,
-responsibility, or a relationship. A card may cross a boundary without
-changing a workspace fact.
-_Avoid_: Container when a semantic hierarchy is intended; membership group
-
-**Semantic Zoom Layer**:
-A named, user-defined presentation rule within a lens. It determines which
-concepts and relationships appear at a scale, its active zoom-percent range,
-and its symmetric fade distance. It does not change the underlying concepts,
-relationships, or their meaning.
-_Avoid_: Lens when the selected perspective is intended; containment layer
-when organizational membership is intended
-
-**Zoom Range**:
-An inclusive user-facing percent interval that controls when a semantic zoom
-layer is fully active. One fade value controls the same gradual transition on
-both sides of this interval. It is a presentation control, not a fact about a
-concept or relationship.
-_Avoid_: Viewport range, organizational scope
-
-**Card Layer Mode**:
-A Lens-local presentation policy for one card. `Automatic` derives the card's
-layer from its size relative to the default new-card size at 100% zoom.
-`Dedicated` selects one named layer. `Always visible` ignores layer filtering.
-It does not change the concept, its placement in another Lens, or a graph fact.
-_Avoid_: Concept type, hierarchy, membership
-
-**Position**:
-The canvas coordinate of a concept placement within a lens layout. Position is not an intrinsic property of a concept.
-_Avoid_: Concept coordinate
-
-## Concepts
-
-**Team**:
-A group that can own or operate work and may itself be a dependency when another concept requires that group's participation, approval, expertise, or capacity.
-_Avoid_: Owner group, department, squad
-
-**Custom Type**:
-A user-defined classification for a concept that extends the curated core type set. In version one, a custom type provides a name, color, and optional icon only. It does not define fields or relationship constraints.
-_Avoid_: Untyped label, one-off implementation enum
-
-**Process**:
-A repeatable sequence of work that produces or changes an outcome. A process may be manual, automated, or mixed.
-_Avoid_: Workflow, procedure, runbook
-
-**Automated Process**:
-A process performed by software rather than manual human effort. It remains a process and is not a separate concept type.
-_Avoid_: Automation as a distinct concept type, bot
-
-**Pipeline**:
-An automated process that coordinates one or more machine-executed steps, often in response to a trigger or invocation by another process.
-_Avoid_: Workflow when the process is specifically automated
-
-**Repository**:
-A source-controlled project or codebase represented as a map concept. A repository can implement or host an automated process.
-_Avoid_: Repo as unstructured metadata
-
-**Service**:
-A system capability, such as Grafana or Confluence, that a process can use or depend on.
-_Avoid_: Tool when the operating capability is intended
-
-**Access**:
-A non-secret authorization dependency that permits a process to use a service. Access is auditable through fields such as its owner, scope, lifecycle state, and expiration; those fields may be explicitly unknown. Access may be fulfilled by a token, service account, role, or other credential, but the workspace never stores the secret value.
-_Avoid_: Token when the secret value is meant
+**Workspace**:
+A document describing a mapped system, its alternative states, and the
+perspectives used to understand them.
+_Avoid_: Treating a workspace as the visible area of the screen.
 
 **Workspace Version**:
-A named local revision of a workspace graph. It can represent either the current state or a planning scenario, and it is not a source-control commit history.
-_Avoid_: Git commit, event log
+A named state of the mapped information, representing the current state or an
+alternative scenario.
+_Avoid_: Git commit, event log.
 
 **Current State**:
-The one named workspace version that represents the accepted present state of the mapped organization.
-_Avoid_: Default branch, live synchronization
+The root state representing the accepted present understanding of the mapped
+system.
+_Avoid_: Live synchronization, default branch.
 
 **Planning Scenario**:
-A named alternative workspace version rooted in a selected workspace version. It is used to plan a possible change without altering the current state.
-_Avoid_: Git branch, required future state
+An alternative state based on another state, used to explore a possible change
+without changing the current state.
+_Avoid_: Required future state, Git branch.
+
+**Lens**:
+A saved perspective on a mapped state, with its own selection and arrangement
+of information.
+_Avoid_: Zoom layer when the whole selected perspective is intended.
+
+**Lens Template**:
+A starting description for a perspective that can be adapted to the map and
+the question being explored.
+_Avoid_: An unchangeable view or a different underlying system.
+
+**Lens Layout**:
+The arrangement of items within a particular perspective.
+_Avoid_: An intrinsic position shared by every perspective.
+
+## Items and Presentation
+
+**Concept**:
+A meaningful item in the mapped system, such as a team, process, or service.
+_Avoid_: Treating its visual appearance as its meaning.
+
+**Card**:
+A visible representation of a concept within a perspective.
+_Avoid_: Treating two representations as two independent concepts.
+
+**Position**:
+An item's location within a particular arrangement.
+_Avoid_: An intrinsic property of the represented item.
+
+**Visual Boundary**:
+A named rectangular area providing visual context in one perspective, without
+asserting membership, ownership, or another relationship.
+_Avoid_: A semantic container or membership group.
+
+**Spatial Containment**:
+One card or area being drawn inside another as part of a visual composition.
+_Avoid_: An assertion of the Contains relationship based only on position.
+
+**Semantic Zoom Layer**:
+A named presentation level within a perspective that determines what appears
+at different scales.
+_Avoid_: A separate system state or organizational hierarchy.
+
+**Zoom Range**:
+The interval of zoom levels where a presentation layer is fully active.
+_Avoid_: Organizational scope, viewport area.
+
+**Card Layer Mode**:
+The policy governing a card's layer visibility: Automatic derives a layer from
+its size, while Manual selects one or more named layers.
+_Avoid_: Concept type, membership, responsibility.
+
+## Classifications
+
+**Team**:
+A group that can own or operate work, or be required for its participation,
+approval, expertise, or capacity.
+_Avoid_: Confusing the group with the work or capability it manages.
+
+**Custom Type**:
+A user-defined classification extending the available kinds of mapped item.
+_Avoid_: A new relationship meaning or a single item's unstructured label.
+
+**Process**:
+A repeatable sequence of work that produces or changes an outcome.
+_Avoid_: Assuming a process must be automated.
+
+**Automated Process**:
+A process performed by software rather than by manual human effort.
+_Avoid_: Treating automation as a separate kind of mapped item.
+
+**Pipeline**:
+An automated process coordinating machine-executed steps.
+_Avoid_: Assuming every process is a pipeline.
+
+**Repository**:
+A source-controlled project or codebase represented in the map.
+_Avoid_: Confusing the repository with the process it implements.
+
+**Service**:
+An operating capability that other work can use or depend on.
+_Avoid_: A credential granting access to that capability.
+
+**Access**:
+An authorization dependency permitting work to use a capability, described
+without recording secret values.
+_Avoid_: The secret token, password, or private key itself.
 
 **Execution Mode**:
-The way a process is performed: `manual`, `automated`, or `hybrid`.
-_Avoid_: Process type, automation type
+Whether a process is performed manually, automatically, or through a mixture
+of both.
+_Avoid_: A distinct process classification.
 
-## Relationships
+## Relationships and Assertions
+
+**Relationship**:
+A directed statement of how one mapped item relates to another.
+_Avoid_: Inferring meaning from proximity or visual nesting alone.
 
 **Contains**:
-A directed structural relationship from a concept to a concept within its organizational or system boundary. Contains does not assign ownership or operational responsibility.
-_Avoid_: Owns when accountability is intended
+A structural relationship placing an item within another item's organizational
+or system scope.
+_Avoid_: Ownership, operational responsibility, spatial containment alone.
 
 **Owns**:
-A directed relationship from a team to a concept for which that team is accountable for purpose, priority, and lifecycle.
-_Avoid_: Operates when day-to-day running responsibility is intended
+A relationship expressing a team's accountability for an item's purpose,
+priority, and lifecycle.
+_Avoid_: Day-to-day operating responsibility when accountability is intended.
 
 **Operates**:
-A directed relationship from a team to a concept for which that team is responsible for running, maintaining, or executing.
-_Avoid_: Owns when accountability is intended
+A relationship expressing a team's responsibility for running, maintaining, or
+executing an item.
+_Avoid_: Assuming that operating something also establishes ownership.
 
 **Dependency**:
-A directed relationship from a source concept to something required for it to operate or complete. The target may be a team when the dependency is on that team's participation, approval, expertise, or capacity.
-_Avoid_: Link, association
+A relationship from an item to something it requires to operate or complete.
+_Avoid_: A directionless association.
 
 **Direct Team Dependency**:
-A dependency whose target is a team because the work depends on that team's active participation, approval, expertise, or capacity. It is not used when the actual dependency is a process, pipeline, service, or access that the team manages.
-_Avoid_: Team dependency when a concrete managed concept is known
+A dependency on a team's participation, approval, expertise, or capacity rather
+than a known capability managed by that team.
+_Avoid_: Substituting a team for a known process, service, or access dependency.
 
 **Implemented In**:
-A directed relationship from a process or pipeline to the repository that contains its executable definition.
-_Avoid_: Implements when the relationship direction is unclear
+A relationship from a process to the repository containing its executable
+definition.
+_Avoid_: Reversing the direction without explaining it.
 
 **Dependency Gap**:
-A derived analysis result that identifies a direct team dependency without a known concrete process, pipeline, service, or access behind it. A dependency gap is not stored as relationship state and does not authorize an agent to infer a missing concept.
-_Avoid_: Unresolved dependency as persisted data
+An analysis finding that a direct team dependency lacks an identified concrete
+process, service, pipeline, or access dependency behind it.
+_Avoid_: Treating a missing explanation as evidence for an invented item.
 
 **Assertion**:
-A user-stated concept or relationship recorded without required evidence metadata. Notes may explain the assertion in version one.
-_Avoid_: Verified fact
+A statement recorded by a person about the mapped system.
+_Avoid_: Assuming that recording a statement independently verifies it.

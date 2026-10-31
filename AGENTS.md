@@ -54,6 +54,17 @@ cargo clippy --workspace --all-targets -- -D warnings
 
 - Add unit tests for changed camera transformations and generated canvas data.
 - Keep tests deterministic.
-- Record manual eframe candidate validation in
-  `docs/project-memory/eframe-candidate.md`. Record later platform evidence in
-  the appropriate dated project-memory record.
+- Record meaningful manual platform checks and their limitations in
+  `docs/validation.md`. Keep dated historical research on the archive branch;
+  do not recreate `docs/wiki`, `docs/discovery`, or `docs/project-memory` as
+  active instructions.
+- Run `bash scripts/check-active-doc-guidance.sh` after documentation changes.
+
+## Documentation and Questions
+
+- Ask user questions through Question Cards.
+- Keep current capabilities separate from product plans. Use
+  `docs/README.md` as the navigation entry point and `docs/history.md` for the
+  archive location.
+- The public terminology decision is open. Explain existing UI/model aliases
+  without silently renaming them or changing the data format.

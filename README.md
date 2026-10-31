@@ -7,15 +7,19 @@ stored as local JSON.
 
 Reason Room is the working product name.
 
+New here? Start with [installation](docs/installation.md), then the
+[user guide](docs/using-reason-room.md). The [documentation index](docs/README.md)
+separates current guides, future plans, and historical records.
+
 The project is in active discovery. Its file format and user experience can
 change before a stable release. Keep a separate copy of important workspaces.
 
-## Features
+## Current Features
 
 - Create, open, save, and copy local canvas documents.
 - Arrange cards, relationships, and visual boundaries on an infinite canvas.
-- Use versions, lenses, containment, and semantic zoom to view a system at
-  different levels of detail.
+- Use saved versions and views (called lenses in the model), spatial
+  composition, and semantic zoom to inspect different perspectives and detail.
 - Undo and redo workspace edits during the current session.
 - Inspect local workspaces with the optional command-line interface.
 - Connect an agent through local MCP tools and the installable Reason Room skill.
@@ -40,8 +44,8 @@ cd Reason-Room
 ### Desktop
 
 The supported desktop path currently requires macOS, Rust `1.97.1`, and the
-Apple developer tools (Xcode Command Line Tools or full Xcode). The repository pins the Rust toolchain
-in `rust-toolchain.toml`.
+Apple developer tools (Xcode Command Line Tools or full Xcode). The repository
+pins the Rust toolchain in `rust-toolchain.toml`.
 
 ### Browser Build
 
@@ -140,25 +144,30 @@ cargo clippy --workspace --all-targets -- -D warnings
 bash scripts/check-active-doc-guidance.sh
 ```
 
-The CLI provides deterministic local inspection and validation. See
-[Workspace schema](docs/workspace-schema.md) for historical schema context and
+The CLI provides deterministic local inspection and validation. See the
+[current version 6 format](docs/workspace-schema.md) for persisted data and
 [External agent support](docs/product/external-agent-support.md) for the local
 MCP boundary.
 
 ## Documentation
 
+See the [documentation index](docs/README.md) for the complete reading paths.
+
+- [User guide](docs/using-reason-room.md) explains the current interface and saving behavior.
+
 - [Installation](docs/installation.md) covers dependencies and troubleshooting.
 - [Architecture](ARCHITECTURE.md) explains the module and persistence
   boundaries.
 - [Security policy](SECURITY.md) explains how to report vulnerabilities.
-- [Product vision](docs/product/vision.md) describes the current discovery
-  scope.
+- [Roadmap](docs/roadmap.md) and [product vision](docs/product/vision.md) describe
+  future intent and open questions, not promised current capabilities.
 - [Glossary](GLOSSARY.md) defines the domain terms used by the application.
 - [WebAssembly browser build](docs/webassembly.md) documents the local web
   path.
 
-Historical research, work items, and validation notes remain under `docs/`.
-They record past decisions. They are not a release guarantee.
+Historical research, prototype records, and superseded decisions are preserved
+on the [dedicated archive branch](docs/history.md). See
+[validation status](docs/validation.md) for the current verification scope.
 
 ## License
 

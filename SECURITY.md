@@ -28,8 +28,8 @@ replacement for a separate backup strategy.
 
 ## Report A Vulnerability
 
-After this repository is published on GitHub, use the repository's **Security**
-tab and select **Report a vulnerability**. Do not open a public issue,
+Use the repository's **Security** tab and select **Report a vulnerability**
+when private vulnerability reporting is enabled. Do not open a public issue,
 discussion, or pull request for a suspected vulnerability.
 
 If private vulnerability reporting is not enabled, contact the repository owner
@@ -52,7 +52,7 @@ Please allow maintainers time to investigate and prepare a fix before public
 disclosure. The maintainer should publish an advisory, affected-version details,
 and remediation guidance when a fix is available.
 
-## Before Publishing
+## Maintainer Setup
 
 Enable GitHub private vulnerability reporting for this repository. Add a private
 security contact if the repository owner does not intend to use GitHub reports.

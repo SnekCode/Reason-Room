@@ -1,5 +1,9 @@
 # Lenses and Semantic Zoom
 
+> **Planning document.** This describes intended experience and open questions,
+> not a guarantee of current capabilities. For current behavior, read the
+> [user guide](../using-reason-room.md) and [validation status](../validation.md).
+
 ## Direction
 
 A single organizational map can answer many questions. A lens gives a person a

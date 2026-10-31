@@ -29,3 +29,7 @@ credentials.json
 credentials.*.json
 secrets.yml
 secrets.yaml
+
+# Python documentation tooling.
+__pycache__/
+*.pyc

@@ -1,0 +1,21 @@
+{
+  "schema_version": 6,
+  "workspace_id": "example",
+  "title": "Example Canvas",
+  "custom_types": [],
+  "current_state": {
+    "id": "current",
+    "title": "Current State",
+    "concepts": [],
+    "relationships": [],
+    "lenses": [
+      {
+        "id": "canvas",
+        "title": "Canvas",
+        "filter": {},
+        "placements": []
+      }
+    ]
+  },
+  "planning_scenarios": []
+}

@@ -1,5 +1,9 @@
 # Discovery Plan
 
+> **Planning document.** This describes intended experience and open questions,
+> not a guarantee of current capabilities. For current behavior, read the
+> [user guide](../using-reason-room.md) and [validation status](../validation.md).
+
 ## Aim
 
 Reduce product risk through small, realistic discovery cycles. Each cycle tests
@@ -59,6 +63,8 @@ need or a clear product constraint.
 After each phase, record what people could do, where they hesitated, and which
 assumptions changed. Update [Product Vision](vision.md), [Core Interaction Model](core-interaction-model.md), and [Lenses and Semantic Zoom](lenses-and-semantic-zoom.md) before defining later delivery work.
 
-For the first boundary-composition session, use the
-[Boundary Discovery Protocol](boundary-discovery-protocol.md). It keeps the
-session focused on observed meaning before a data-model or interface decision.
+
+Past study protocols and observations are preserved in the
+[documentation archive](../history.md). Start new studies from an explicitly
+current question and example rather than treating an archived protocol as
+active instructions.

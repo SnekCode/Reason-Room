@@ -1,5 +1,9 @@
 # Core Interaction Model
 
+> **Planning document.** This describes intended experience and open questions,
+> not a guarantee of current capabilities. For current behavior, read the
+> [user guide](../using-reason-room.md) and [validation status](../validation.md).
+
 ## Canvas Objects
 
 The canvas has a small set of visual building blocks. Their meaning must stay

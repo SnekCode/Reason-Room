@@ -1,7 +1,8 @@
 # Install and Run Reason Room
 
 Reason Room builds from source. The supported desktop launcher currently runs
-on macOS. The browser build uses the same Rust application through WebAssembly.
+on macOS. The declared desktop minimum is macOS 13; the recorded launch check
+was on Apple Silicon with macOS 27.0.1, not a complete compatibility matrix. The browser build uses the same Rust application through WebAssembly.
 
 ## Required Tools
 
@@ -13,7 +14,7 @@ on macOS. The browser build uses the same Rust application through WebAssembly.
 | Rust through `rustup` | Required | Required | `rust-toolchain.toml` pins Rust **1.97.1**, including Cargo, rustfmt, and Clippy. |
 | `wasm32-unknown-unknown` Rust target | No | Required | Install for the pinned toolchain. |
 | `wasm-bindgen-cli` **0.2.129** | No | Required | Must match the version used by the application. |
-| Python 3 | No | Required to serve locally | Not needed for `--build-only` or when visiting a hosted site. |
+| Python 3 | No | Required to serve locally | Also used by documentation checks; not needed for `--build-only` or visiting a hosted site. |
 | Modern browser with WebGPU or WebGL2 support | No | Required to use the browser app | Browser and graphics support must be checked on the target device. |
 
 Cargo downloads the pinned Rust library dependencies automatically. You do not
@@ -92,7 +93,8 @@ INFINITE_NOTE_CANVAS_WORKSPACE="/absolute/path/outside/the/repository/canvas.jso
 ```
 
 Use a writable file outside the checkout. Important documents should have
-separate backups.
+separate backups. Continue with the [user guide](using-reason-room.md) to create
+and arrange your own map.
 
 ## 4. Optional: Build and Run in a Browser
 

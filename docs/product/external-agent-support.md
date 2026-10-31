@@ -1,6 +1,6 @@
 # External Agent Support
 
-## Decision
+## Current Interface
 
 External agents use a local Model Context Protocol (MCP) server over standard
 input and output. The server owns one explicitly selected workspace file. It
@@ -10,25 +10,12 @@ This is the initial adapter for external agents. It preserves the local-first
 product model. It gives an agent one small interface for reading a map and a
 separate, explicitly enabled interface for one validated workspace change.
 
-## Why This Shape
+## Persistence Boundary
 
-PhotoCraft offers a headless MCP server and can optionally bridge to a running
-desktop process. Its UI, command line, and MCP tools share command handling.
-It also scopes headless file access to configured roots.
-
-Reason Room follows the useful parts of that design:
-
-- MCP uses standard input and output.
-- The agent receives access to one stated local workspace path.
-- Read and write operations reuse the application's typed workspace actions.
-- A change uses the same local save, backup, validation, and recovery path as
-  interactive authoring.
-
-The desktop bridge is intentionally not included. It would require a network
-listener or another live-process transport. The current product decision is
-local files without network services.
-
-Sources: [PhotoCraft MCP command](https://github.com/storytold/photocraft/blob/952c328b3d849eaa110cff9c7ab9977389590ccc/apps/photocraft-cli/src/automation.rs) and [its automation arguments](https://github.com/storytold/photocraft/blob/952c328b3d849eaa110cff9c7ab9977389590ccc/apps/photocraft-cli/src/args.rs).
+The server reuses the workspace-session crate's typed actions and local
+save/backup/verification path. It opens and validates the selected file for
+each call. The desktop app can observe resulting file changes; the server has
+no live UI bridge and does not share the desktop undo history.
 
 ## Installable Agent Skill
 
@@ -53,7 +40,7 @@ cargo build --locked --release --package infinite-note-canvas-cli
 ```
 
 Configure an MCP client with an absolute CLI path and an absolute workspace
-path. This example gives the agent read and write access to only one file.
+path. This example gives the agent read-only access to one existing file.
 
 ```json
 {
@@ -63,16 +50,16 @@ path. This example gives the agent read and write access to only one file.
       "args": [
         "mcp",
         "--workspace",
-        "/absolute/path/to/workspace.json",
-        "--allow-write"
+        "/absolute/path/to/workspace.json"
       ]
     }
   }
 }
 ```
 
-Remove `--allow-write` to offer read-only tools. The server rejects write tools
-unless that option is present when the process starts.
+Add `"--allow-write"` to the argument list when the user wants editing, then
+reconnect. The server rejects write tools unless that option is present when
+the process starts. The selected file's parent directory must already exist.
 
 When a write-enabled server starts with a path that does not yet exist, its
 only initial tool is `create_workspace`. That tool can create an empty document
@@ -90,7 +77,6 @@ args = [
   "mcp",
   "--workspace",
   "/absolute/path/to/workspace.json",
-  "--allow-write",
 ]
 ```
 
@@ -113,7 +99,7 @@ application. The MCP command is an agent adapter. It does not start the app.
 - `apply_workspace_change` is available only with `--allow-write`. It applies
   one validated change at a time.
 
-The write tool supports create, read, update, and delete workflows for cards,
+The write tool supports create, update, and delete workflows for cards,
 relationships, visual boundaries, and semantic-zoom layers. It reports the
 saved workspace digest after every successful change.
 
