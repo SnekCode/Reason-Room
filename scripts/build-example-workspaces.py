@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-"""Author the bundled examples through the real local MCP server.
+"""Author the original example seed layouts through the real local MCP server.
+
+The bundled website was subsequently curated by hand. This script does not
+reproduce that revision; review layout differences before replacing it.
 
 Build the CLI first. Pass an empty directory OUTSIDE the checkout; inspect the
 results before copying the two JSON documents into workspaces/. No direct JSON

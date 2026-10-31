@@ -21,6 +21,16 @@ The website has 60 cards and the VSM 90. MCP previews at 12%, 45%, and 120%
 show respectively 6/24/60 and 9/36/90 visible cards. A graph edge can bring its
 endpoints into view, so the examples keep peer connections at matching levels.
 
+## Curated Layout
+
+The bundled website example includes a human layout revision after its initial
+MCP authoring. Its groups, boundaries and visitor cards were repositioned and
+resized for readability. Card content, relationships and zoom policies remain
+unchanged. Treat the checked-in document as the maintained example; the
+script below generates the original seed layout and does not reproduce this
+manual revision. Do not replace the curated document with generated output
+without reviewing the layout differences.
+
 ## Authoring through MCP
 
 The [authoring script](../scripts/build-example-workspaces.py) invokes the real

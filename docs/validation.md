@@ -67,6 +67,17 @@ Windows menus, mobile layouts, all graphics combinations and real cloud/factory
 behavior were not validated. Browser live-refresh picker permissions were not
 exercised in this example-loading check.
 
+## Curated Website Layout — 2026-10-31
+
+Imported the user's revised website JSON unchanged. Only placement and boundary
+geometry differs from the initial example; the 60 cards, 46 relationships and
+semantic zoom settings are retained. All 305 tests, the workspace build, strict
+Clippy, formatting, documentation checks and browser release build passed.
+Visually loaded the revised bundled example through File > Examples in the local
+browser build and confirmed the new group arrangement and opening overview.
+The native binary was built; this layout revision was not separately inspected
+in a newly launched native app.
+
 ## Remaining Evidence and Known Limits
 
 - Browser `localStorage` failures are not fully handled. Test blocked storage,
