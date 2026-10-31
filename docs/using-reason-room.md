@@ -98,6 +98,11 @@ from an explicit **contains** relationship. Some UI interactions treat spatially
 nested cards as a group for movement or connection behavior, but position alone
 does not establish a graph fact.
 
+Relationship paths are calculated in canvas coordinates and reused while you
+zoom or pan, including when semantic detail appears or leaves the viewport.
+Moving or resizing cards and boundaries recalculates routes for the new layout.
+Visibility still follows the active View and zoom layers.
+
 ## Work with Zoom Layers
 
 Choose **Create → Zoom layer** to add a presentation level. Layers belong to

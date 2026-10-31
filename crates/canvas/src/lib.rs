@@ -8,6 +8,8 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::ops::{Add, AddAssign, Mul, Sub};
 
 pub mod interaction;
+pub mod routing;
+pub use routing::RelationshipRouteCache;
 pub mod workspace;
 
 pub use interaction::{CanvasCommand, CanvasInteraction};

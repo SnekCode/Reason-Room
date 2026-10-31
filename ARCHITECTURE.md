@@ -32,7 +32,11 @@ crates/app                       web/index.html + crates/app
 This crate owns the pure domain and canvas behavior. It contains workspace
 data types, validation, geometry, camera transformations, visibility queries,
 relationship routing, spatial containment, and generated data. It does not depend on
-the UI framework or on file persistence.
+the UI framework or on file persistence. `RelationshipRouteCache` calculates
+routes from the complete Lens geometry in canvas coordinates, including cards
+outside the viewport or hidden by semantic zoom. It reuses those routes until
+card or boundary geometry changes. The app projects and clips cached paths for
+painting and hit testing; camera changes do not participate in routing.
 
 ### `crates/workspace-session`
 

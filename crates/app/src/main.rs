@@ -1,7 +1,9 @@
 mod examples;
 mod workspace_session;
+use infinite_note_canvas_canvas::RelationshipRouteCache;
 
 use std::{
+    cell::RefCell,
     collections::{BTreeMap, BTreeSet, HashMap},
     path::{Path, PathBuf},
     sync::{Arc, Mutex},
@@ -655,6 +657,7 @@ struct InfiniteNoteCanvasApp {
     lens_cameras: HashMap<LensViewportKey, Camera>,
     canvas_viewport_size: Point,
     fit_example_on_next_frame: bool,
+    relationship_route_cache: RefCell<RelationshipRouteCache>,
     notices: Vec<Notice>,
     type_change_failure_toast: Option<TypeChangeFailureToast>,
     ui_time_seconds: f64,
@@ -1338,6 +1341,7 @@ impl InfiniteNoteCanvasApp {
             lens_cameras: HashMap::new(),
             canvas_viewport_size: Point::default(),
             fit_example_on_next_frame: false,
+            relationship_route_cache: RefCell::default(),
             notices: Vec::new(),
             type_change_failure_toast: None,
             ui_time_seconds: 0.0,
@@ -4496,13 +4500,8 @@ impl InfiniteNoteCanvasApp {
             return CanvasContextMenuTarget::Card(concept_id);
         }
         let displayed_card_bounds_by_concept_id = self.displayed_card_bounds_in_viewport(viewport);
-        let routing_boundary_rects = self.visual_boundary_screen_rects(viewport);
         if let Some(relationship_id) = relationship_path_at_outside_cards(
-            &self.visible_relationship_paths(
-                &displayed_card_bounds_by_concept_id,
-                &routing_boundary_rects,
-                viewport,
-            ),
+            &self.visible_relationship_paths(viewport),
             screen_position,
             7.0,
             &displayed_card_bounds_by_concept_id,
@@ -4703,12 +4702,7 @@ impl InfiniteNoteCanvasApp {
             .collect()
     }
 
-    fn visible_relationship_paths(
-        &self,
-        displayed_card_bounds_by_concept_id: &BTreeMap<u32, CanvasRect>,
-        routing_boundary_rects: &[Rect],
-        viewport: Rect,
-    ) -> Vec<RelationshipPaintPath> {
+    fn visible_relationship_paths(&self, viewport: Rect) -> Vec<RelationshipPaintPath> {
         let relationships = self.active_relationships();
         let relationships = if self.semantic_layer_filtering_is_active() {
             let Some(frame) = self.semantic_zoom_frame() else {
@@ -4718,15 +4712,55 @@ impl InfiniteNoteCanvasApp {
         } else {
             relationships
         };
-        let endpoint_bounds_by_concept_id =
-            self.relationship_endpoint_screen_bounds(&relationships, viewport);
-        relationship_paint_paths(
-            &relationships,
-            &endpoint_bounds_by_concept_id,
-            displayed_card_bounds_by_concept_id,
-            routing_boundary_rects,
-            viewport,
-        )
+        let cards = self
+            .session()
+            .map(|session| session.dataset())
+            .unwrap_or(&self.dataset);
+        let world_bounds = cards
+            .cards()
+            .map(|card| {
+                (
+                    card.id,
+                    move_preview_bounds(card.bounds, card.id, self.gesture.as_ref()),
+                )
+            })
+            .collect();
+        let boundaries: Vec<_> = self
+            .active_visual_boundaries()
+            .iter()
+            .map(|boundary| boundary_preview_bounds(boundary, self.gesture.as_ref()))
+            .collect();
+        let camera = self.interaction.camera();
+        let screen_boundaries: Vec<_> = boundaries
+            .iter()
+            .map(|bounds| canvas_rect_to_screen(*bounds, camera, viewport))
+            .collect();
+        let endpoint_bounds = self.relationship_endpoint_screen_bounds(&relationships, viewport);
+        let mut cache = self.relationship_route_cache.borrow_mut();
+        cache.update_layout(world_bounds, boundaries);
+        relationships
+            .iter()
+            .filter_map(|relationship| {
+                let path = cache.route(relationship.source_id, relationship.target_id)?;
+                let mut path: Vec<_> = path
+                    .iter()
+                    .map(|point| canvas_point_to_screen(*point, camera, viewport))
+                    .collect();
+                // Keep the cached bends and attachment side. Only the terminal
+                // anchor follows a painted card's minimum size/layer scale.
+                for (index, id) in [
+                    (0, relationship.source_id),
+                    (path.len() - 1, relationship.target_id),
+                ] {
+                    if let Some(bounds) = endpoint_bounds.get(&id) {
+                        let anchor = Point::new(path[index].x, path[index].y);
+                        let port = relationship_port_toward(*bounds, anchor).1;
+                        path[index] = Pos2::new(port.x, port.y);
+                    }
+                }
+                relationship_paint_path(relationship, &path, &screen_boundaries, viewport)
+            })
+            .collect()
     }
 
     fn relationship_endpoint_screen_bounds(
@@ -4826,13 +4860,8 @@ impl InfiniteNoteCanvasApp {
             return Some(CanvasHoverTarget::Card(concept_id));
         }
         let displayed_card_bounds_by_concept_id = self.displayed_card_bounds_in_viewport(viewport);
-        let routing_boundary_rects = self.visual_boundary_screen_rects(viewport);
         if let Some(relationship_id) = relationship_path_at_outside_cards(
-            &self.visible_relationship_paths(
-                &displayed_card_bounds_by_concept_id,
-                &routing_boundary_rects,
-                viewport,
-            ),
+            &self.visible_relationship_paths(viewport),
             screen_position,
             7.0,
             &displayed_card_bounds_by_concept_id,
@@ -5048,13 +5077,8 @@ impl InfiniteNoteCanvasApp {
                 } else {
                     let displayed_card_bounds_by_concept_id =
                         self.displayed_card_bounds_in_viewport(viewport);
-                    let routing_boundary_rects = self.visual_boundary_screen_rects(viewport);
                     let relationship_id = relationship_path_at_outside_cards(
-                        &self.visible_relationship_paths(
-                            &displayed_card_bounds_by_concept_id,
-                            &routing_boundary_rects,
-                            viewport,
-                        ),
+                        &self.visible_relationship_paths(viewport),
                         pointer.expect("a viewport position has a pointer position"),
                         7.0,
                         &displayed_card_bounds_by_concept_id,
@@ -5430,19 +5454,7 @@ impl InfiniteNoteCanvasApp {
         } else {
             BTreeMap::new()
         };
-        let selected_card_ids = self.interaction.selected_card_ids().collect();
-        let displayed_card_bounds_by_concept_id = painted_card_bounds_by_concept_id(
-            &visible_cards,
-            camera,
-            viewport,
-            &selected_card_ids,
-            self.gesture.as_ref(),
-        );
-        let relationship_paths = self.visible_relationship_paths(
-            &displayed_card_bounds_by_concept_id,
-            &visual_boundary_screen_rects,
-            viewport,
-        );
+        let relationship_paths = self.visible_relationship_paths(viewport);
         let hidden_card_count = visible_card_count.saturating_sub(visible_cards.len());
         let zoom_level = card_detail_level(camera.scale);
         // Paint cards before relationship paths. Container cards are surfaces
@@ -9318,6 +9330,7 @@ enum CanvasContextKind {
     Card { base_layer_title: Option<String> },
 }
 
+#[cfg(test)]
 fn relationship_paint_paths(
     relationships: &[RelationshipView],
     endpoint_bounds_by_concept_id: &BTreeMap<u32, CanvasRect>,
@@ -9335,23 +9348,33 @@ fn relationship_paint_paths(
                 displayed_card_bounds_by_concept_id,
                 routing_boundary_rects,
             )?;
-            let visible_segments = clipped_path_segments(&path, viewport);
-            (!visible_segments.is_empty()).then(|| RelationshipPaintPath {
-                id: relationship.id.clone(),
-                kind: relationship.kind,
-                crosses_boundary: relationship_path_crosses_boundary(&path, routing_boundary_rects),
-                arrowhead: connection_arrowhead_for_path(&path)
-                    .filter(|arrowhead| viewport.contains(arrowhead[0])),
-                label_position: should_paint_relationship_path_label(true, &path)
-                    .then(|| connection_label_position_for_path(&path))
-                    .flatten()
-                    .filter(|position| viewport.contains(*position)),
-                visible_segments,
-            })
+            relationship_paint_path(relationship, &path, routing_boundary_rects, viewport)
         })
         .collect()
 }
 
+fn relationship_paint_path(
+    relationship: &RelationshipView,
+    path: &[Pos2],
+    boundary_rects: &[Rect],
+    viewport: Rect,
+) -> Option<RelationshipPaintPath> {
+    let visible_segments = clipped_path_segments(path, viewport);
+    (!visible_segments.is_empty()).then(|| RelationshipPaintPath {
+        id: relationship.id.clone(),
+        kind: relationship.kind,
+        crosses_boundary: relationship_path_crosses_boundary(path, boundary_rects),
+        arrowhead: connection_arrowhead_for_path(path)
+            .filter(|arrowhead| viewport.contains(arrowhead[0])),
+        label_position: should_paint_relationship_path_label(true, path)
+            .then(|| connection_label_position_for_path(path))
+            .flatten()
+            .filter(|position| viewport.contains(*position)),
+        visible_segments,
+    })
+}
+
+#[cfg(test)]
 fn routed_relationship_points(
     source_id: u32,
     target_id: u32,
@@ -9359,42 +9382,25 @@ fn routed_relationship_points(
     displayed_card_bounds_by_concept_id: &BTreeMap<u32, CanvasRect>,
     routing_boundary_rects: &[Rect],
 ) -> Option<Vec<Pos2>> {
-    let source_bounds = *endpoint_bounds_by_concept_id.get(&source_id)?;
-    let target_bounds = *endpoint_bounds_by_concept_id.get(&target_id)?;
-    let mut containment_bounds_by_concept_id = displayed_card_bounds_by_concept_id.clone();
-    containment_bounds_by_concept_id.insert(source_id, source_bounds);
-    containment_bounds_by_concept_id.insert(target_id, target_bounds);
-    let parent_by_child = card_parent_ids(
-        containment_bounds_by_concept_id
+    let mut bounds = displayed_card_bounds_by_concept_id.clone();
+    bounds.extend(
+        endpoint_bounds_by_concept_id
             .iter()
-            .map(|(card_id, bounds)| (*card_id, *bounds)),
+            .map(|(id, bounds)| (*id, *bounds)),
     );
-    if cards_are_in_containment_chain(&parent_by_child, source_id, target_id) {
-        return None;
-    }
-    let permitted_context_card_ids =
-        relationship_context_card_ids(source_id, target_id, &parent_by_child);
-    let mut obstacles = displayed_card_bounds_by_concept_id
-        .iter()
-        .filter_map(|(card_id, bounds)| {
-            (!permitted_context_card_ids.contains(card_id)).then_some(*bounds)
-        })
-        .collect::<Vec<_>>();
-    obstacles.extend(boundary_route_obstacles(
-        source_bounds,
-        target_bounds,
-        routing_boundary_rects,
-    ));
-    let mut route = relationship_path_around_obstacles(source_bounds, target_bounds, &obstacles);
-    if route.len() < 2 {
-        return None;
-    }
-    route[0] = relationship_port_toward(source_bounds, route[1]).1;
-    let route_end = route.len() - 1;
-    route[route_end] = relationship_port_toward(target_bounds, route[route_end - 1]).1;
+    let mut cache = RelationshipRouteCache::default();
+    cache.update_layout(
+        bounds,
+        routing_boundary_rects
+            .iter()
+            .copied()
+            .map(screen_rect_to_canvas_rect)
+            .collect(),
+    );
     Some(
-        route
-            .into_iter()
+        cache
+            .route(source_id, target_id)?
+            .iter()
             .map(|point| Pos2::new(point.x, point.y))
             .collect(),
     )
@@ -9483,22 +9489,6 @@ fn boundary_contains_card(boundary: Rect, card_bounds: CanvasRect) -> bool {
     ))
 }
 
-fn relationship_context_card_ids(
-    source_id: u32,
-    target_id: u32,
-    parent_by_child: &BTreeMap<u32, u32>,
-) -> BTreeSet<u32> {
-    let mut context_card_ids = BTreeSet::from([source_id, target_id]);
-    for endpoint_id in [source_id, target_id] {
-        let mut current_id = endpoint_id;
-        while let Some(parent_id) = parent_by_child.get(&current_id) {
-            context_card_ids.insert(*parent_id);
-            current_id = *parent_id;
-        }
-    }
-    context_card_ids
-}
-
 fn relationship_path_at(
     relationship_paths: &[RelationshipPaintPath],
     position: Pos2,
@@ -9569,7 +9559,6 @@ fn relationship_paths_to_screen(
         .collect()
 }
 
-#[cfg(test)]
 fn canvas_point_to_screen(point: Point, camera: Camera, viewport: Rect) -> Pos2 {
     let point = camera.world_to_screen(point);
     viewport.min + Vec2::new(point.x, point.y)
@@ -11532,6 +11521,7 @@ mod tests {
                 lens_cameras: std::collections::HashMap::new(),
                 canvas_viewport_size: Point::default(),
                 fit_example_on_next_frame: false,
+                relationship_route_cache: RefCell::default(),
                 notices: Vec::new(),
                 type_change_failure_toast: None,
                 ui_time_seconds: 0.0,
@@ -15696,6 +15686,67 @@ mod tests {
     }
 
     #[test]
+    fn manufacturing_routes_stay_cached_across_zoom_pan_and_semantic_layers() {
+        let mut app = test_app();
+        let document = examples::ALL[1].document().unwrap();
+        let path = std::env::temp_dir().join(format!(
+            "reason-room-routing-{}-{}.json",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::write(&path, document.to_pretty_json().unwrap()).unwrap();
+        let session = WorkspaceSession::load_default(path.clone()).unwrap();
+        app.dataset = session.dataset().clone();
+        app.workspace_state = WorkspaceState::Loaded(Box::new(session));
+        let viewport = Rect::from_min_size(Pos2::new(0.0, 55.0), Vec2::new(1589.0, 810.0));
+        let relationships = app.active_relationships();
+        let mut baseline = BTreeMap::new();
+        for scale in [0.42, 0.43, 0.439, 0.12, 1.2] {
+            let mut camera = Camera::new(Point::new(-700.0, 300.0), scale);
+            camera.center_world_point_in_viewport(
+                Point::new(3000.0, 2300.0),
+                Point::new(viewport.width(), viewport.height()),
+            );
+            // Pan as well as zoom; neither should change the world-space route.
+            camera.offset.x += scale * 31.0;
+            app.interaction.set_camera(camera);
+            app.refresh_display_dataset();
+            let paths = app.visible_relationship_paths(viewport);
+            assert!(!paths.is_empty(), "missing painted routes at {scale}");
+            let mut cache = app.relationship_route_cache.borrow_mut();
+            for edge in &relationships {
+                if let Some(route) = cache.route(edge.source_id, edge.target_id) {
+                    if baseline.is_empty() && scale != 0.42 {
+                        panic!("missing baseline");
+                    }
+                    if scale == 0.42 {
+                        baseline.insert(edge.id.clone(), (route.to_vec(), route.as_ptr()));
+                    } else if let Some((expected, pointer)) = baseline.get(&edge.id) {
+                        assert_eq!(route, expected, "route changed for {} at {scale}", edge.id);
+                        assert_eq!(route.as_ptr(), *pointer, "unnecessary recalculation");
+                        for point in route {
+                            let projected = canvas_point_to_screen(*point, camera, viewport);
+                            let restored = camera.screen_to_world(Point::new(
+                                projected.x - viewport.left(),
+                                projected.y - viewport.top(),
+                            ));
+                            assert!(
+                                (restored.x - point.x).abs() < 0.01
+                                    && (restored.y - point.y).abs() < 0.01
+                            );
+                        }
+                    }
+                }
+            }
+        }
+        assert!(!baseline.is_empty());
+        std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
     fn example_switch_refuses_to_discard_a_card_edit() {
         let mut app = test_app();
         app.dataset = CanvasDataset::from_records(vec![test_card(Point::default())], Vec::new());
@@ -15796,6 +15847,7 @@ mod tests {
             lens_cameras: HashMap::new(),
             canvas_viewport_size: Point::default(),
             fit_example_on_next_frame: false,
+            relationship_route_cache: RefCell::default(),
             notices: Vec::new(),
             type_change_failure_toast: None,
             ui_time_seconds: 0.0,

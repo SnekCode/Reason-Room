@@ -78,6 +78,27 @@ browser build and confirmed the new group arrangement and opening overview.
 The native binary was built; this layout revision was not separately inspected
 in a newly launched native app.
 
+## Stable Relationship Routing — 2026-10-31
+
+Routes now use the complete Lens geometry in canvas coordinates, cached by card
+and boundary layout. Camera changes, viewport clipping and semantic visibility
+do not invalidate them. Painting and relationship hit testing share the same
+projected paths. Terminal anchors still follow displayed card sizes; the cached
+bend sequence remains fixed. Layout edits invalidate the cache.
+
+On Apple Silicon macOS with Rust 1.97.1, all 308 workspace tests passed, along
+with the workspace build, strict Clippy, formatting and documentation checks.
+The browser release built through `./start.sh --web --build-only`. A regression
+using the manufacturing example checks identical cached routes at 42%, 43%,
+43.9%, overview and detail scales, with panning. Pure routing tests cover cache
+reuse, geometry invalidation, nested endpoint context and missing endpoints.
+Manual local browser checks confirmed that the same manufacturing route stayed
+above the Stamping / Body welding / Body buffer cards at neighboring 42% and
+43% zoom, rather than jumping below them. The rebuilt native app launched through
+`./start.sh`; the same route stayed above those cards while zooming through
+41–43%. No workspace format change is needed;
+routes are derived in memory rather than saved into workspace JSON.
+
 ## Remaining Evidence and Known Limits
 
 - Browser `localStorage` failures are not fully handled. Test blocked storage,
