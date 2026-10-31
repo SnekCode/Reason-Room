@@ -1,0 +1,74 @@
+{
+  "schema_version": 1,
+  "workspace_id": "legacy-acme",
+  "title": "Legacy Acme",
+  "concepts": [
+    {
+      "id": 1,
+      "kind": "team",
+      "title": "Platform Team",
+      "summary": "Runs platform services"
+    },
+    {
+      "id": 2,
+      "kind": "service",
+      "title": "Portal API",
+      "summary": "An API"
+    },
+    {
+      "id": 3,
+      "kind": "environment",
+      "title": "Production",
+      "summary": "Production environment"
+    }
+  ],
+  "relationships": [
+    {
+      "id": "legacy-own",
+      "kind": "owns",
+      "source_id": 1,
+      "target_id": 2
+    },
+    {
+      "id": "legacy-operates",
+      "kind": "operated_by",
+      "source_id": 3,
+      "target_id": 1
+    },
+    {
+      "id": "legacy-depends",
+      "kind": "depends_on",
+      "source_id": 2,
+      "target_id": 3
+    }
+  ],
+  "views": [
+    {
+      "id": "legacy-view",
+      "title": "Legacy view",
+      "placements": [
+        {
+          "concept_id": 1,
+          "bounds": {
+            "origin": { "x": 0.0, "y": 0.0 },
+            "size": { "x": 240.0, "y": 132.0 }
+          }
+        },
+        {
+          "concept_id": 2,
+          "bounds": {
+            "origin": { "x": 320.0, "y": 0.0 },
+            "size": { "x": 240.0, "y": 132.0 }
+          }
+        },
+        {
+          "concept_id": 3,
+          "bounds": {
+            "origin": { "x": 640.0, "y": 0.0 },
+            "size": { "x": 240.0, "y": 132.0 }
+          }
+        }
+      ]
+    }
+  ]
+}

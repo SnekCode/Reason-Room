@@ -1,0 +1,112 @@
+{
+  "schema_version": 5,
+  "workspace_id": "semantic-zoom-evaluation",
+  "title": "Semantic Zoom Evaluation",
+  "current_state": {
+    "id": "current",
+    "title": "Current State",
+    "concepts": [
+      {
+        "id": 30,
+        "type_id": "service",
+        "title": "Detail record",
+        "summary": "A close-scale record"
+      },
+      {
+        "id": 10,
+        "type_id": "project",
+        "title": "Context record",
+        "summary": "A broad-scale record"
+      },
+      {
+        "id": 20,
+        "type_id": "project",
+        "title": "Working record",
+        "summary": "A working-scale record"
+      }
+    ],
+    "relationships": [
+      {
+        "id": "working-to-detail",
+        "kind": "depends_on",
+        "source_id": 20,
+        "target_id": 30,
+        "label": "depends on"
+      },
+      {
+        "id": "context-to-working",
+        "kind": "depends_on",
+        "source_id": 10,
+        "target_id": 20,
+        "label": "depends on"
+      }
+    ],
+    "lenses": [
+      {
+        "id": "semantic-zoom-evaluation",
+        "title": "Semantic Zoom Evaluation",
+        "filter": {},
+        "placements": [
+          {
+            "concept_id": 30,
+            "bounds": {
+              "origin": { "x": 720.0, "y": 160.0 },
+              "size": { "x": 240.0, "y": 120.0 }
+            }
+          },
+          {
+            "concept_id": 10,
+            "bounds": {
+              "origin": { "x": 80.0, "y": 160.0 },
+              "size": { "x": 240.0, "y": 120.0 }
+            }
+          },
+          {
+            "concept_id": 20,
+            "bounds": {
+              "origin": { "x": 400.0, "y": 160.0 },
+              "size": { "x": 240.0, "y": 120.0 }
+            }
+          }
+        ],
+        "semantic_zoom_layers": [
+          {
+            "id": "broad",
+            "title": "Broad context",
+            "fade_out": { "start": 0.75, "end": 0.85 },
+            "card_scale": 0.5,
+            "concept_ids": [10],
+            "relationship_ids": ["context-to-working"]
+          },
+          {
+            "id": "working",
+            "title": "Working path",
+            "fade_in": { "start": 0.75, "end": 0.85 },
+            "fade_out": { "start": 1.4, "end": 1.5 },
+            "card_scale": 0.7,
+            "concept_ids": [20],
+            "relationship_ids": ["working-to-detail"]
+          },
+          {
+            "id": "detail",
+            "title": "Close detail",
+            "fade_in": { "start": 1.4, "end": 1.5 },
+            "card_scale": 1.0,
+            "concept_ids": [30]
+          }
+        ],
+        "semantic_zoom_card_modes": [
+          {
+            "concept_id": 10,
+            "mode": {
+              "dedicated": {
+                "layer_id": "broad"
+              }
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "planning_scenarios": []
+}

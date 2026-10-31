@@ -1,0 +1,15 @@
+[package]
+name = "infinite-note-canvas-canvas"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[lib]
+name = "infinite_note_canvas_canvas"
+path = "src/lib.rs"
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true

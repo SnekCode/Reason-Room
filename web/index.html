@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark" />
+    <meta name="description" content="Reason Room — a local-first canvas for exploring ideas, relationships, and complex systems." />
+    <title>Reason Room</title>
+    <style>
+      html,
+      body,
+      #infinite-note-canvas {
+        width: 100%;
+        height: 100%;
+        margin: 0;
+        overflow: hidden;
+        background: #16222d;
+      }
+
+      #startup-failure {
+        display: none;
+        box-sizing: border-box;
+        max-width: 44rem;
+        margin: 4rem auto;
+        padding: 1.5rem;
+        border: 1px solid #ef8b8b;
+        border-radius: 0.5rem;
+        color: #e8f0f5;
+        background: #243543;
+        font: 1rem/1.5 system-ui, sans-serif;
+      }
+    </style>
+  </head>
+  <body>
+    <canvas id="infinite-note-canvas" aria-label="Reason Room"></canvas>
+    <input
+      id="local-workspace-file"
+      type="file"
+      accept=".json,application/json"
+      hidden
+    />
+    <pre id="startup-failure" role="alert"></pre>
+    <script type="module">
+      import init, { WebHandle } from "./infinite_note_canvas.js";
+
+      const failure = document.getElementById("startup-failure");
+      const localWorkspaceFile = document.getElementById("local-workspace-file");
+      const browserWorkspaceStorageKey =
+        "infinite-note-canvas-last-opened-workspace-v1";
+      const workspaceRefreshIntervalMilliseconds = 500;
+      let application;
+      let watchedWorkspace;
+
+      window.infiniteNoteCanvasDownload = (source, fileName) => {
+        const blob = new Blob([source], { type: "application/json" });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = fileName;
+        link.hidden = true;
+        document.body.append(link);
+        link.click();
+        link.remove();
+        URL.revokeObjectURL(url);
+      };
+
+      window.infiniteNoteCanvasPersistWorkspace = (source) => {
+        window.localStorage.setItem(browserWorkspaceStorageKey, source);
+      };
+
+      function reportFailure(message, error) {
+        failure.textContent = message + ":\n" + error;
+        failure.style.display = "block";
+      }
+
+      function stopWatchingWorkspace() {
+        watchedWorkspace = undefined;
+      }
+
+      async function refreshWatchedWorkspace() {
+        const watched = watchedWorkspace;
+        if (!watched) {
+          return;
+        }
+        let source;
+        try {
+          const file = await watched.fileHandle.getFile();
+          source = await file.text();
+          if (source === watched.source || source === watched.rejectedSource) {
+            return;
+          }
+          if (application.refresh_local_workspace(source, file.name)) {
+            watched.source = source;
+            watched.rejectedSource = undefined;
+          }
+        } catch (error) {
+          if (watched.rejectedSource !== source) {
+            console.warn("Reason Room could not refresh its local file:", error);
+          }
+          watched.rejectedSource = source;
+        }
+      }
+
+      function watchWorkspace(fileHandle, source) {
+        watchedWorkspace = { fileHandle, source, rejectedSource: undefined };
+      }
+
+      async function openWorkspaceFromHandle(fileHandle) {
+        const file = await fileHandle.getFile();
+        const source = await file.text();
+        application.import_local_workspace(source, file.name);
+        watchWorkspace(fileHandle, source);
+      }
+
+      function openStandardWorkspace() {
+        stopWatchingWorkspace();
+        localWorkspaceFile.value = "";
+        localWorkspaceFile.click();
+      }
+
+      window.infiniteNoteCanvasOpenWorkspace = openStandardWorkspace;
+
+      window.infiniteNoteCanvasOpenWatchedWorkspace = () => {
+        if (typeof window.showOpenFilePicker !== "function") {
+          openStandardWorkspace();
+          return;
+        }
+        void (async () => {
+          try {
+            const [fileHandle] = await window.showOpenFilePicker({
+              types: [
+                {
+                  description: "Reason Room",
+                  accept: { "application/json": [".json"] },
+                },
+              ],
+              multiple: false,
+            });
+            await openWorkspaceFromHandle(fileHandle);
+          } catch (error) {
+            if (error?.name !== "AbortError") {
+              reportFailure(
+                "Reason Room could not connect the selected file for live refresh. Use Open canvas to open it without live refresh",
+                error,
+              );
+            }
+          }
+        })();
+      };
+
+      async function start() {
+        await init();
+        application = new WebHandle();
+        await application.start(document.getElementById("infinite-note-canvas"));
+        const savedWorkspace = window.localStorage.getItem(browserWorkspaceStorageKey);
+        if (savedWorkspace) {
+          try {
+            application.restore_browser_workspace(savedWorkspace);
+          } catch (error) {
+            window.localStorage.removeItem(browserWorkspaceStorageKey);
+            console.warn("Reason Room could not restore its last canvas:", error);
+          }
+        }
+        localWorkspaceFile.addEventListener("change", async () => {
+          const file = localWorkspaceFile.files?.item(0);
+          if (!file) {
+            return;
+          }
+          try {
+            application.import_local_workspace(await file.text(), file.name);
+            stopWatchingWorkspace();
+          } catch (error) {
+            reportFailure("Reason Room could not open " + file.name, error);
+          } finally {
+            localWorkspaceFile.value = "";
+          }
+        });
+        window.setInterval(() => void refreshWatchedWorkspace(), workspaceRefreshIntervalMilliseconds);
+        window.infiniteNoteCanvas = application;
+      }
+
+      start().catch((error) => {
+        reportFailure("Reason Room could not start", error);
+      });
+    </script>
+  </body>
+</html>
