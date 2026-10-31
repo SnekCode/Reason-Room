@@ -81,7 +81,7 @@ also closes the app instance it started.
 On first launch, an evaluation workspace is copied to:
 
 ```text
-~/Library/Application Support/Infinite Note Canvas/infinite-note-canvas-eframe-evaluation.json
+~/Library/Application Support/Infinite Note Canvas/reason-room-static-react-website.infinite-note.json
 ```
 
 That directory retains the original working name for compatibility. Later

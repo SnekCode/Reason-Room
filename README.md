@@ -17,6 +17,8 @@ change before a stable release. Keep a separate copy of important workspaces.
 ## Current Features
 
 - Create, open, save, and copy local canvas documents.
+- Explore two built-in examples through **File → Examples**: a static React
+  website delivery system and a car manufacturing value stream.
 - Arrange cards, relationships, and visual boundaries on an infinite canvas.
 - Use saved versions and views (called lenses in the model), spatial
   composition, and semantic zoom to inspect different perspectives and detail.

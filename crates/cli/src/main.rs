@@ -460,7 +460,7 @@ mod tests {
     use std::{env, fs};
 
     const SEMANTIC_ZOOM_FIXTURE: &str =
-        include_str!("../../../workspaces/semantic-zoom-evaluation.fixture.json");
+        include_str!("../../../tests/fixtures/semantic-zoom-evaluation.fixture.json");
 
     #[test]
     fn inspect_and_query_emit_json_contract_records() {

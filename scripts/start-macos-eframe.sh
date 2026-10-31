@@ -11,7 +11,7 @@ fail() {
 repository_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 cd "$repository_root"
 
-workspace_fixture="$repository_root/workspaces/gpui-evaluation.fixture.json"
+workspace_fixture="$repository_root/workspaces/static-react-website.infinite-note.json"
 bundle_info_template="$repository_root/crates/app/resources/macos/eframe-evaluation-Info.plist"
 workspace_environment_variable='INFINITE_NOTE_CANVAS_WORKSPACE'
 fallback_workspace_environment_variable='INFINITE_NOTE_CANVAS_FALLBACK_WORKSPACE'
@@ -19,7 +19,7 @@ candidate_bundle="$repository_root/target/release/Reason Room Evaluation.app"
 candidate_contents="$candidate_bundle/Contents"
 candidate_executable="$candidate_contents/MacOS/infinite-note-canvas"
 candidate_info="$candidate_contents/Info.plist"
-suggested_workspace="${HOME:-/tmp}/infinite-note-canvas-eframe-evaluation.json"
+suggested_workspace="${HOME:-/tmp}/reason-room-static-react-website.infinite-note.json"
 printf -v copy_workspace_command 'cp %q %q' "$workspace_fixture" "$suggested_workspace"
 printf -v set_workspace_command 'export INFINITE_NOTE_CANVAS_WORKSPACE=%q' "$suggested_workspace"
 

@@ -12,7 +12,7 @@ fi
 repository_root="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 launcher="$repository_root/scripts/start-macos-eframe.sh"
 web_launcher="$repository_root/scripts/start-web-wasm.sh"
-fixture="$repository_root/workspaces/gpui-evaluation.fixture.json"
+fixture="$repository_root/workspaces/static-react-website.infinite-note.json"
 
 fail() {
   printf 'ERROR: %s\n' "$1" >&2
@@ -57,7 +57,7 @@ fi
 workspace_directory="$HOME/Library/Application Support/Infinite Note Canvas"
 mkdir -p "$workspace_directory"
 workspace_directory="$(cd "$workspace_directory" && pwd -P)"
-workspace_path="$workspace_directory/infinite-note-canvas-eframe-evaluation.json"
+workspace_path="$workspace_directory/reason-room-static-react-website.infinite-note.json"
 
 repository_workspaces="$repository_root/workspaces"
 if [[ "$workspace_directory" == "$repository_workspaces" || "$workspace_directory" == "$repository_workspaces"/* ]]; then

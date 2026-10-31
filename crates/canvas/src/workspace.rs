@@ -5563,7 +5563,7 @@ mod tests {
 
     #[test]
     fn version_one_workspace_migrates_without_losing_relationships() {
-        let source = include_str!("../../../workspaces/acme-v1.fixture.json");
+        let source = include_str!("../../../tests/fixtures/acme-v1.fixture.json");
 
         let document = WorkspaceDocument::parse_json(source).unwrap();
         let version = document.version("current").unwrap();

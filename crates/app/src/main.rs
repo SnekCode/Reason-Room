@@ -1,3 +1,4 @@
+mod examples;
 mod workspace_session;
 
 use std::{
@@ -225,6 +226,9 @@ extern "C" {
 
     #[wasm_bindgen(js_namespace = window, js_name = infiniteNoteCanvasPersistWorkspace)]
     fn persist_browser_workspace(source: &str);
+
+    #[wasm_bindgen(js_namespace = window, js_name = infiniteNoteCanvasStopWatchingWorkspace)]
+    fn stop_watching_browser_workspace();
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -440,6 +444,7 @@ fn install_native_application_menu(
     open_canvas_requested: Arc<AtomicBool>,
     save_canvas_requested: Arc<AtomicBool>,
     save_as_canvas_requested: Arc<AtomicBool>,
+    example_requested: Arc<Mutex<Option<examples::Example>>>,
 ) -> Result<NativeApplicationMenu, String> {
     #[cfg(target_os = "macos")]
     let _ = creation_context;
@@ -462,6 +467,16 @@ fn install_native_application_menu(
         muda::MenuItem::with_id(NATIVE_SAVE_CANVAS_MENU_ITEM_ID, "Save", true, None);
     let save_as_canvas_item =
         muda::MenuItem::with_id(NATIVE_SAVE_AS_CANVAS_MENU_ITEM_ID, "Save As...", true, None);
+    let example_items: Vec<_> = examples::ALL
+        .iter()
+        .map(|example| muda::MenuItem::with_id(example.menu_id, example.title, true, None))
+        .collect();
+    let example_refs: Vec<&dyn muda::IsMenuItem> = example_items
+        .iter()
+        .map(|item| item as &dyn muda::IsMenuItem)
+        .collect();
+    let examples_menu = muda::Submenu::with_items("Examples", true, &example_refs)
+        .map_err(|error| error.to_string())?;
     let menu = muda::Menu::new();
     #[cfg(target_os = "macos")]
     {
@@ -507,6 +522,7 @@ fn install_native_application_menu(
                 &open_save_separator,
                 &save_canvas_item,
                 &save_as_canvas_item,
+                &examples_menu,
             ],
         )
         .map_err(|error| error.to_string())?;
@@ -528,6 +544,7 @@ fn install_native_application_menu(
                 &open_save_separator,
                 &save_canvas_item,
                 &save_as_canvas_item,
+                &examples_menu,
             ],
         )
         .map_err(|error| error.to_string())?;
@@ -554,6 +571,13 @@ fn install_native_application_menu(
 
     let menu_context = creation_context.egui_ctx.clone();
     muda::MenuEvent::set_event_handler(Some(move |event: muda::MenuEvent| {
+        if let Some(example) = examples::ALL
+            .iter()
+            .find(|example| event.id.as_ref() == example.menu_id)
+        {
+            *example_requested.lock().expect("example menu lock") = Some(*example);
+            menu_context.request_repaint();
+        }
         if event.id.as_ref() == NATIVE_SETTINGS_MENU_ITEM_ID {
             settings_window_requested.store(true, Ordering::Release);
             menu_context.request_repaint();
@@ -601,6 +625,8 @@ struct InfiniteNoteCanvasApp {
     save_canvas_requested: Arc<AtomicBool>,
     #[cfg(not(target_arch = "wasm32"))]
     save_as_canvas_requested: Arc<AtomicBool>,
+    #[cfg(not(target_arch = "wasm32"))]
+    example_requested: Arc<Mutex<Option<examples::Example>>>,
     #[cfg(any(target_os = "macos", target_os = "windows"))]
     _native_application_menu: Option<NativeApplicationMenu>,
     show_all_cards: bool,
@@ -628,6 +654,7 @@ struct InfiniteNoteCanvasApp {
     hover_target: Option<CanvasHoverTarget>,
     lens_cameras: HashMap<LensViewportKey, Camera>,
     canvas_viewport_size: Point,
+    fit_example_on_next_frame: bool,
     notices: Vec<Notice>,
     type_change_failure_toast: Option<TypeChangeFailureToast>,
     ui_time_seconds: f64,
@@ -780,7 +807,7 @@ enum MoveCommitRoute {
     Group,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 struct SemanticZoomLayerEditorDraft {
     layer_id: String,
     title: String,
@@ -1153,7 +1180,7 @@ impl NewCanvasDraft {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 struct BoundaryInspectorDraft {
     boundary_id: String,
     title: String,
@@ -1222,6 +1249,8 @@ impl InfiniteNoteCanvasApp {
         let save_canvas_requested = Arc::new(AtomicBool::new(false));
         #[cfg(not(target_arch = "wasm32"))]
         let save_as_canvas_requested = Arc::new(AtomicBool::new(false));
+        #[cfg(not(target_arch = "wasm32"))]
+        let example_requested = Arc::new(Mutex::new(None));
         #[cfg(any(target_os = "macos", target_os = "windows"))]
         let native_application_menu = install_native_application_menu(
             creation_context,
@@ -1230,6 +1259,7 @@ impl InfiniteNoteCanvasApp {
             Arc::clone(&open_canvas_requested),
             Arc::clone(&save_canvas_requested),
             Arc::clone(&save_as_canvas_requested),
+            Arc::clone(&example_requested),
         )
         .map_or_else(
             |error| {
@@ -1267,6 +1297,8 @@ impl InfiniteNoteCanvasApp {
             save_canvas_requested,
             #[cfg(not(target_arch = "wasm32"))]
             save_as_canvas_requested,
+            #[cfg(not(target_arch = "wasm32"))]
+            example_requested,
             #[cfg(any(target_os = "macos", target_os = "windows"))]
             _native_application_menu: native_application_menu,
             show_all_cards: false,
@@ -1305,6 +1337,7 @@ impl InfiniteNoteCanvasApp {
             hover_target: None,
             lens_cameras: HashMap::new(),
             canvas_viewport_size: Point::default(),
+            fit_example_on_next_frame: false,
             notices: Vec::new(),
             type_change_failure_toast: None,
             ui_time_seconds: 0.0,
@@ -1313,6 +1346,13 @@ impl InfiniteNoteCanvasApp {
             #[cfg(not(target_arch = "wasm32"))]
             external_workspace_refresh_error: None,
         };
+        if app
+            .session()
+            .is_some_and(|session| examples::is_example(session.document()))
+        {
+            app.fit_example_on_next_frame = true;
+            app.inspector_collapsed = true;
+        }
         app.refresh_canvas_type_id_index();
         #[cfg(not(target_arch = "wasm32"))]
         app.remember_open_canvas_path();
@@ -2647,6 +2687,17 @@ impl InfiniteNoteCanvasApp {
     fn process_native_menu_request(&mut self) {
         #[cfg(not(target_arch = "wasm32"))]
         {
+            let requested = self
+                .example_requested
+                .lock()
+                .expect("example menu lock")
+                .take();
+            if let Some(example) = requested {
+                self.load_example(example);
+            }
+        }
+        #[cfg(not(target_arch = "wasm32"))]
+        {
             if self
                 .settings_window_requested
                 .swap(false, Ordering::Acquire)
@@ -2665,6 +2716,66 @@ impl InfiniteNoteCanvasApp {
             if self.save_as_canvas_requested.swap(false, Ordering::Acquire) {
                 self.request_save_as_canvas();
             }
+        }
+    }
+
+    fn load_example(&mut self, example: examples::Example) {
+        if !self.can_switch_canvas("load an example") {
+            return;
+        }
+        let boundary_changed = self.boundary_inspector_draft.as_ref().is_some_and(|draft| {
+            self.active_visual_boundaries()
+                .iter()
+                .find(|boundary| boundary.id == draft.boundary_id)
+                .is_some_and(|boundary| boundary_inspector_draft(boundary) != *draft)
+        });
+        let layer_changed = self
+            .semantic_zoom_layer_draft
+            .as_ref()
+            .is_some_and(|draft| {
+                self.session()
+                    .and_then(|session| {
+                        session
+                            .document()
+                            .version(session.active_version_id())
+                            .ok()
+                            .and_then(|version| {
+                                version
+                                    .lenses
+                                    .iter()
+                                    .find(|lens| lens.id == session.active_lens_id())
+                            })
+                    })
+                    .into_iter()
+                    .flat_map(|lens| lens.semantic_zoom_layers.iter())
+                    .find(|layer| layer.id == draft.layer_id)
+                    .is_some_and(|layer| semantic_zoom_layer_editor_draft(layer) != *draft)
+            });
+        if boundary_changed || layer_changed {
+            self.set_failure("SAVE OR DISCARD EDIT", "Save or discard the current boundary or zoom layer edit before loading an example.");
+            return;
+        }
+        let result = example.document().and_then(|document| {
+            #[cfg(not(target_arch = "wasm32"))]
+            {
+                WorkspaceSession::create_new(suggested_new_canvas_path(example.title), document)
+                    .map_err(|error| error.to_string())
+            }
+            #[cfg(target_arch = "wasm32")]
+            {
+                WorkspaceSession::create_new_browser(document).map_err(|error| error.to_string())
+            }
+        });
+        match result {
+            Ok(session) => {
+                #[cfg(target_arch = "wasm32")]
+                stop_watching_browser_workspace();
+                self.replace_workspace_session(session);
+                self.fit_example_on_next_frame = true;
+                self.inspector_collapsed = true;
+                self.show_notice("EXAMPLE LOADED", format!("{}. Zoom into a large card to reveal process and working detail. Changes are saved to your own copy.", example.title), false);
+            }
+            Err(error) => self.set_failure("EXAMPLE NOT LOADED", error),
         }
     }
 
@@ -2948,6 +3059,7 @@ impl InfiniteNoteCanvasApp {
     }
 
     fn replace_workspace_session(&mut self, session: WorkspaceSession) {
+        let is_example = examples::is_example(session.document());
         self.dataset = session.dataset().clone();
         self.workspace_state = WorkspaceState::Loaded(Box::new(session));
         #[cfg(target_arch = "wasm32")]
@@ -2955,6 +3067,10 @@ impl InfiniteNoteCanvasApp {
         #[cfg(not(target_arch = "wasm32"))]
         self.remember_open_canvas_path();
         self.interaction = CanvasInteraction::new(Camera::default());
+        self.fit_example_on_next_frame = is_example;
+        if is_example {
+            self.inspector_collapsed = true;
+        }
         self.gesture = None;
         self.previous_shift_hover = None;
         self.inspector_draft = None;
@@ -3787,6 +3903,7 @@ impl InfiniteNoteCanvasApp {
         let workspace_controls_enabled = true;
         let history_controls_enabled = workspace_controls_enabled && self.dialog.is_none();
         ui.horizontal_wrapped(|ui| {
+            let mut requested_example = None;
             let mut requested_new_canvas = false;
             let mut requested_open_canvas = false;
             #[cfg(target_arch = "wasm32")]
@@ -3794,6 +3911,15 @@ impl InfiniteNoteCanvasApp {
             let mut requested_save_canvas = false;
             let mut requested_save_as_canvas = false;
             ui.menu_button("File", |ui| {
+                ui.menu_button("Examples", |ui| {
+                    for example in examples::ALL {
+                        if ui.button(example.title).clicked() {
+                            requested_example = Some(*example);
+                            ui.close();
+                        }
+                    }
+                });
+                ui.separator();
                 if ui.button("New canvas...").clicked() {
                     requested_new_canvas = true;
                     ui.close();
@@ -3835,6 +3961,9 @@ impl InfiniteNoteCanvasApp {
                     }
                 }
             });
+            if let Some(example) = requested_example {
+                self.load_example(example);
+            }
             if requested_new_canvas {
                 self.open_new_canvas_dialog();
             }
@@ -4296,6 +4425,26 @@ impl InfiniteNoteCanvasApp {
         let viewport = response.rect;
         let viewport_size = Point::new(viewport.width(), viewport.height());
         self.canvas_viewport_size = viewport_size;
+        if self.fit_example_on_next_frame && viewport_size.x > 0.0 && viewport_size.y > 0.0 {
+            self.fit_example_on_next_frame = false;
+            let bounds = self
+                .session()
+                .into_iter()
+                .flat_map(|session| session.dataset().cards().map(|card| card.bounds))
+                .chain(
+                    self.active_visual_boundaries()
+                        .into_iter()
+                        .map(|boundary| boundary.bounds),
+                )
+                .reduce(canvas_rect_union);
+            if let Some(bounds) = bounds {
+                self.interaction
+                    .set_camera(example_overview_camera(bounds, viewport_size));
+            }
+            self.refresh_display_dataset();
+            self.notices.clear();
+            self.show_notice("EXPLORE THIS EXAMPLE", "Zoom into a large card: process steps appear at 24%, working detail at 85%. Select a card to read its notes. File > Examples opens a fresh copy.", false);
+        }
         self.clear_noninteractive_canvas_selection();
         let controls_bounds = self.canvas_search_and_filter_controls(ui.ctx(), viewport);
         self.handle_canvas_input(ui, &response, viewport, viewport_size, controls_bounds);
@@ -10346,6 +10495,17 @@ fn canvas_rect_union(first: CanvasRect, second: CanvasRect) -> CanvasRect {
 
 /// Fits content with a quiet outer margin. It never zooms in: the context-menu
 /// action is a recovery action for a view that has become too close or lost.
+fn example_overview_camera(bounds: CanvasRect, viewport_size: Point) -> Camera {
+    let top_inset = 100.0_f32.min(viewport_size.y * 0.25);
+    let mut camera = camera_centered_to_fit_bounds(
+        Camera::default(),
+        bounds,
+        Point::new(viewport_size.x, viewport_size.y - top_inset),
+    );
+    camera.offset.y += top_inset;
+    camera
+}
+
 fn camera_centered_to_fit_bounds(
     current: Camera,
     bounds: CanvasRect,
@@ -11371,6 +11531,7 @@ mod tests {
                 semantic_zoom_layer_draft: None,
                 lens_cameras: std::collections::HashMap::new(),
                 canvas_viewport_size: Point::default(),
+                fit_example_on_next_frame: false,
                 notices: Vec::new(),
                 type_change_failure_toast: None,
                 ui_time_seconds: 0.0,
@@ -15534,6 +15695,45 @@ mod tests {
         );
     }
 
+    #[test]
+    fn example_switch_refuses_to_discard_a_card_edit() {
+        let mut app = test_app();
+        app.dataset = CanvasDataset::from_records(vec![test_card(Point::default())], Vec::new());
+        let id = app.dataset.cards().next().unwrap().id;
+        app.set_selection(Some(id));
+        app.inspector_draft = Some(ConceptInspectorDraft {
+            concept_id: id,
+            title: "unsaved replacement".into(),
+            type_id: "service".into(),
+            summary: String::new(),
+            details: String::new(),
+            assertion_attributes: BTreeMap::new(),
+            assertion_key: String::new(),
+            assertion_value: String::new(),
+            assertion_error: None,
+        });
+        let before = app.dataset.cards().count();
+        app.load_example(examples::ALL[0]);
+        assert_eq!(app.dataset.cards().count(), before);
+        assert!(!app.fit_example_on_next_frame);
+        assert_eq!(
+            app.inspector_draft.as_ref().unwrap().title,
+            "unsaved replacement"
+        );
+    }
+
+    #[test]
+    fn example_overview_fits_below_the_floating_controls() {
+        let bounds = CanvasRect::new(Point::new(-100.0, -170.0), Point::new(6400.0, 4820.0));
+        let viewport = Point::new(1280.0, 665.0);
+        let camera = example_overview_camera(bounds, viewport);
+        let top_left = camera.world_to_screen(bounds.origin);
+        let bottom_right = camera.world_to_screen(bounds.origin + bounds.size);
+        assert!(top_left.x >= 0.0 && top_left.y >= 100.0);
+        assert!(bottom_right.x <= viewport.x && bottom_right.y <= viewport.y);
+        assert!(camera.scale < 0.24);
+    }
+
     fn test_app() -> InfiniteNoteCanvasApp {
         InfiniteNoteCanvasApp {
             dataset: CanvasDataset::from_records(Vec::new(), Vec::new()),
@@ -15556,6 +15756,7 @@ mod tests {
             open_canvas_requested: Arc::new(AtomicBool::new(false)),
             save_canvas_requested: Arc::new(AtomicBool::new(false)),
             save_as_canvas_requested: Arc::new(AtomicBool::new(false)),
+            example_requested: Arc::new(Mutex::new(None)),
             #[cfg(any(target_os = "macos", target_os = "windows"))]
             _native_application_menu: None,
             show_all_cards: false,
@@ -15594,6 +15795,7 @@ mod tests {
             hover_target: None,
             lens_cameras: HashMap::new(),
             canvas_viewport_size: Point::default(),
+            fit_example_on_next_frame: false,
             notices: Vec::new(),
             type_change_failure_toast: None,
             ui_time_seconds: 0.0,

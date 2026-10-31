@@ -10,9 +10,9 @@ const WORKSPACE_ENVIRONMENT_VARIABLE: &str = "INFINITE_NOTE_CANVAS_WORKSPACE";
 #[cfg(not(target_arch = "wasm32"))]
 const FALLBACK_WORKSPACE_ENVIRONMENT_VARIABLE: &str = "INFINITE_NOTE_CANVAS_FALLBACK_WORKSPACE";
 #[cfg(not(target_arch = "wasm32"))]
-const REPOSITORY_WORKSPACE_PATH: &str = "workspaces/acme.infinite-note.json";
+const REPOSITORY_WORKSPACE_PATH: &str = "workspaces/static-react-website.infinite-note.json";
 #[cfg(not(target_arch = "wasm32"))]
-const DEFAULT_WORKSPACE_FILE_NAME: &str = "acme.infinite-note.json";
+const DEFAULT_WORKSPACE_FILE_NAME: &str = "static-react-website.infinite-note.json";
 
 #[cfg(not(target_arch = "wasm32"))]
 pub(crate) fn load_from_environment() -> Result<WorkspaceSession, String> {
@@ -63,7 +63,7 @@ pub(crate) fn has_explicit_workspace_override() -> bool {
 #[cfg(target_arch = "wasm32")]
 pub(crate) fn load_from_environment() -> Result<WorkspaceSession, String> {
     let fallback_document = WorkspaceDocument::parse_json(include_str!(
-        "../../../workspaces/gpui-evaluation.fixture.json"
+        "../../../workspaces/static-react-website.infinite-note.json"
     ))
     .map_err(|error| format!("could not validate bundled browser workspace: {error}"))?;
 
@@ -124,7 +124,7 @@ mod tests {
         let selected_path = select_workspace_path(
             Some(configured_path.clone()),
             Some(PathBuf::from("fallback.infinite-note.json")),
-            PathBuf::from("workspaces/acme.infinite-note.json"),
+            PathBuf::from("workspaces/static-react-website.infinite-note.json"),
             true,
             Some(PathBuf::from("/Users/tester")),
         )
@@ -135,7 +135,8 @@ mod tests {
 
     #[test]
     fn repository_workspace_is_the_development_default() {
-        let repository_workspace_path = PathBuf::from("workspaces/acme.infinite-note.json");
+        let repository_workspace_path =
+            PathBuf::from("workspaces/static-react-website.infinite-note.json");
 
         let selected_path = select_workspace_path(
             None,
@@ -154,7 +155,7 @@ mod tests {
         let selected_path = select_workspace_path(
             None,
             None,
-            PathBuf::from("workspaces/acme.infinite-note.json"),
+            PathBuf::from("workspaces/static-react-website.infinite-note.json"),
             false,
             Some(PathBuf::from("/Users/tester")),
         )
@@ -163,7 +164,7 @@ mod tests {
         assert_eq!(
             selected_path,
             PathBuf::from(
-                "/Users/tester/Library/Application Support/Infinite Note Canvas/acme.infinite-note.json"
+                "/Users/tester/Library/Application Support/Infinite Note Canvas/static-react-website.infinite-note.json"
             )
         );
     }
@@ -175,7 +176,7 @@ mod tests {
         let selected_path = select_workspace_path(
             None,
             Some(fallback_path.clone()),
-            PathBuf::from("workspaces/acme.infinite-note.json"),
+            PathBuf::from("workspaces/static-react-website.infinite-note.json"),
             true,
             Some(PathBuf::from("/Users/tester")),
         )

@@ -21,12 +21,33 @@ Product-planning documents also use Entity and Connection. Those are design
 language; they do not introduce additional saved object types. See the
 [glossary](../GLOSSARY.md) for the domain distinctions.
 
-## Explore the Example
+## Explore the Examples
 
-The desktop launcher opens an evaluation copy outside the repository. The
-browser restores its saved canvas or starts with the bundled example. The
-toolbar shows the selected Version and View. Switch the View selector to explore
-saved perspectives without changing the underlying document version.
+Choose **File → Examples → Static React website** or **Car manufacturing value
+stream** in either app. The macOS application File menu offers the same choices.
+Each click opens a fresh editable copy: desktop saves it in the local Canvases
+directory without overwriting an existing file; the browser saves it in its
+local workspace storage. Save or discard an active edit before switching.
+Use Save As to keep a separate browser copy before replacing it with an example.
+
+A new installation starts with the website example, fitted to an overview.
+Existing desktop recent-file and browser restore choices are preserved.
+The examples use one current Version and View, with three semantic zoom levels:
+
+| Example | Overview | Process | Working detail |
+| --- | --- | --- | --- |
+| Static React website | Repository, Actions, AWS, Cloudflare, visitors, recovery | Source/docs/wiki, CI stages, DNS and hosting | Files, credential boundaries, caching, requests and rollback |
+| Car manufacturing value stream | Mine through dealer and customer demand | Fabrication, transport, queues, factory operations and production control | Individual operations, timing assumptions, inventory and quality gates |
+
+Zoom toward a large card: process steps appear at **24%**, individual work
+records at **85%**. Parent cards remain as spatial context. Named boundaries
+show account/company context, and directed relationships cross those boundaries.
+Select a card to read its notes. The VSM is a fictional training example, with
+explicit demand, takt, inventory and cycle-time assumptions; it is not measured
+factory data. The website describes an illustrative cloud architecture and
+does not provision accounts, DNS or hosting.
+
+See [example authoring and maintenance](examples.md) for the MCP workflow.
 
 - Use the wheel to zoom around the pointer. Shift plus wheel pans; a middle
   button drag also pans.

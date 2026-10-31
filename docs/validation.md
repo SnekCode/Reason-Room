@@ -40,6 +40,33 @@ The audit changes documentation and documentation checks, not application
 behavior or the saved format. Historical validation notes remain on the archive
 branch. Terminology standardization remains an explicit open product decision.
 
+## Built-in Example Refresh — 2026-10-31
+
+On this Apple Silicon Mac, Rust 1.97.1 and wasm-bindgen 0.2.129:
+
+- Authored both documents using the real CLI MCP server over stdio, following
+  the Reason Room skill's discovery, mutation and read-back workflow. Website:
+  237 saved mutations, 60 cards; VSM: 356 saved mutations, 90 cards. No workspace
+  JSON was handwritten. Preview counts at 12/45/120% were 6/24/60 and 9/36/90.
+- Local checks passed: 305 workspace tests, workspace build, strict Clippy,
+  formatting, documentation links/examples and skill package validation.
+  Example tests cover progressive visibility, transition context, two spatial
+  nesting levels and cross-boundary edges. Camera and draft-switch guards have
+  focused regression coverage.
+- Native app launched with `./start.sh`. Both File menus expose the two
+  examples. Loading creates a unique external copy. Manual zooming revealed
+  process and work records while retaining enclosing context.
+- Browser release built through `./start.sh --web --build-only` and was served
+  locally by the supported web launcher. File > Examples and the three zoom
+  levels were inspected visually. Browser example loading detaches watched-file
+  access; an in-flight refresh is ignored after detachment.
+
+The VSM uses fictional metrics, including 480 cars/day, 112.5 s/car takt and a
+125 s/car paint bottleneck. Neither example provisions external services.
+Windows menus, mobile layouts, all graphics combinations and real cloud/factory
+behavior were not validated. Browser live-refresh picker permissions were not
+exercised in this example-loading check.
+
 ## Remaining Evidence and Known Limits
 
 - Browser `localStorage` failures are not fully handled. Test blocked storage,

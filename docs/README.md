@@ -13,6 +13,7 @@ may change before a stable release.
 
 ## Developers and Agents
 
+- [Built-in examples](examples.md): walkthrough contents and MCP authoring.
 - [Architecture](../ARCHITECTURE.md): module boundaries, graph versus presentation, and persistence.
 - [Workspace format](workspace-schema.md): current version 6 JSON, validation, and migrations.
 - [MCP and agent support](product/external-agent-support.md): scoped access to local files.

@@ -1,0 +1,3555 @@
+{
+  "schema_version": 6,
+  "workspace_id": "car-manufacturing-vsm",
+  "title": "Car manufacturing — value stream from mine to customer",
+  "custom_types": [],
+  "current_state": {
+    "id": "current",
+    "title": "Current State",
+    "concepts": [
+      {
+        "id": 1,
+        "type_id": "organization",
+        "title": "Mining & materials",
+        "summary": "External supplier: raw ore becomes usable steel and aluminum. All figures and organizations in this training map are illustrative.",
+        "details": "External supplier: raw ore becomes usable steel and aluminum. All figures and organizations in this training map are illustrative.\n\nZoom into this card: process cards appear at 24%; individual work records at 85%. This card is a spatial container. Its placement does not imply ownership or a typed contains edge.",
+        "attributes": {}
+      },
+      {
+        "id": 2,
+        "type_id": "process",
+        "title": "Extract ore",
+        "summary": "Upstream extraction precedes the factory value stream.",
+        "details": "Upstream extraction precedes the factory value stream.",
+        "attributes": {
+          "example": "Illustrative; not production instructions"
+        }
+      },
+      {
+        "id": 3,
+        "type_id": "service",
+        "title": "Drill + blast",
+        "summary": "Prepare and extract ore; material flow starts here.",
+        "details": "Prepare and extract ore; material flow starts here.",
+        "attributes": {}
+      },
+      {
+        "id": 4,
+        "type_id": "service",
+        "title": "Crush + concentrate",
+        "summary": "Separate valuable material before transport.",
+        "details": "Separate valuable material before transport.",
+        "attributes": {}
+      },
+      {
+        "id": 5,
+        "type_id": "process",
+        "title": "Smelt + refine",
+        "summary": "Convert concentrate into primary metal.",
+        "details": "Convert concentrate into primary metal.",
+        "attributes": {
+          "example": "Illustrative; not production instructions"
+        }
+      },
+      {
+        "id": 6,
+        "type_id": "service",
+        "title": "Smelt",
+        "summary": "Energy-intensive conversion to usable metal.",
+        "details": "Energy-intensive conversion to usable metal.",
+        "attributes": {}
+      },
+      {
+        "id": 7,
+        "type_id": "service",
+        "title": "Refine + cast",
+        "summary": "Control composition and cast slabs or billets.",
+        "details": "Control composition and cast slabs or billets.",
+        "attributes": {}
+      },
+      {
+        "id": 8,
+        "type_id": "process",
+        "title": "Roll + dispatch",
+        "summary": "Produce coils that component suppliers can form.",
+        "details": "Produce coils that component suppliers can form.",
+        "attributes": {
+          "example": "Illustrative; not production instructions"
+        }
+      },
+      {
+        "id": 9,
+        "type_id": "service",
+        "title": "Roll steel coils",
+        "summary": "Record batch identity and grade.",
+        "details": "Record batch identity and grade.",
+        "attributes": {}
+      },
+      {
+        "id": 10,
+        "type_id": "service",
+        "title": "Load rail shipment",
+        "summary": "A transport queue adds lead time without adding processing time.",
+        "details": "A transport queue adds lead time without adding processing time.",
+        "attributes": {}
+      },
+      {
+        "id": 11,
+        "type_id": "organization",
+        "title": "Component fabrication",
+        "summary": "External tier suppliers convert materials into stamped panels, machined parts and bought-in assemblies.",
+        "details": "External tier suppliers convert materials into stamped panels, machined parts and bought-in assemblies.\n\nZoom into this card: process cards appear at 24%; individual work records at 85%. This card is a spatial container. Its placement does not imply ownership or a typed contains edge.",
+        "attributes": {}
+      },
+      {
+        "id": 12,
+        "type_id": "process",
+        "title": "Form + machine",
+        "summary": "Supplier conversion work.",
+        "details": "Supplier conversion work.",
+        "attributes": {
+          "example": "Illustrative; not production instructions"
+        }
+      },
+      {
+        "id": 13,
+        "type_id": "service",
+        "title": "Stamp panels",
+        "summary": "Press coil blanks into body panels; track scrap and changeover.",
+        "details": "Press coil blanks into body panels; track scrap and changeover.",
+        "attributes": {}
+      },
+      {
+        "id": 14,
+        "type_id": "service",
+        "title": "Machine powertrain",
+        "summary": "Machine housings and engine or drive-unit components.",
+        "details": "Machine housings and engine or drive-unit components.",
+        "attributes": {}
+      },
+      {
+        "id": 15,
+        "type_id": "process",
+        "title": "Build subassemblies",
+        "summary": "Parts become modules.",
+        "details": "Parts become modules.",
+        "attributes": {
+          "example": "Illustrative; not production instructions"
+        }
+      },
+      {
+        "id": 16,
+        "type_id": "service",
+        "title": "Seats + electronics",
+        "summary": "Assemble interiors and electronic modules.",
+        "details": "Assemble interiors and electronic modules.",
+        "attributes": {}
+      },
+      {
+        "id": 17,
+        "type_id": "service",
+        "title": "Tires + glass",
+        "summary": "Fabricate bought-in parts to the vehicle specification.",
+        "details": "Fabricate bought-in parts to the vehicle specification.",
+        "attributes": {}
+      },
+      {
+        "id": 18,
+        "type_id": "process",
+        "title": "Quality + pack",
+        "summary": "Supplier release gate.",
+        "details": "Supplier release gate.",
+        "attributes": {
+          "example": "Illustrative; not production instructions"
+        }
+      },
+      {
+        "id": 19,
+        "type_id": "service",
+        "title": "Inspect batch",
+        "summary": "Trace dimensions, lot and nonconformance.",
+        "details": "Trace dimensions, lot and nonconformance.",
+        "attributes": {}
+      },
+      {
+        "id": 20,
+        "type_id": "service",
+        "title": "Pack returnable racks",
+        "summary": "Protect parts and label destination and sequence.",
+        "details": "Protect parts and label destination and sequence.",
+        "attributes": {}
+      },
+      {
+        "id": 21,
+        "type_id": "process",
+        "title": "Inbound logistics",
+        "summary": "External transport crosses supplier and company boundaries. Waiting, transit and customs are lead time, not vehicle assembly cycle time.",
+        "details": "External transport crosses supplier and company boundaries. Waiting, transit and customs are lead time, not vehicle assembly cycle time.\n\nZoom into this card: process cards appear at 24%; individual work records at 85%. This card is a spatial container. Its placement does not imply ownership or a typed contains edge.",
+        "attributes": {}
+      },
+      {
+        "id": 22,
+        "type_id": "process",
+        "title": "Schedule pickup",
+        "summary": "Respond to factory replenishment signals.",
+        "details": "Respond to factory replenishment signals.",
+        "attributes": {
+          "example": "Illustrative; not production instructions"
+        }
+      },
+      {
+        "id": 23,
+        "type_id": "service",
+        "title": "Transport order",
+        "summary": "Consolidate supplier lots and delivery windows.",
+        "details": "Consolidate supplier lots and delivery windows.",
+        "attributes": {}
+      },
+      {
+        "id": 24,
+        "type_id": "service",
+        "title": "Milk-run route",
+        "summary": "Collect sequenced racks from multiple suppliers.",
+        "details": "Collect sequenced racks from multiple suppliers.",
+        "attributes": {}
+      },
+      {
+        "id": 25,
+        "type_id": "process",
+        "title": "Move freight",
+        "summary": "Material travels by rail and truck.",
+        "details": "Material travels by rail and truck.",
+        "attributes": {
+          "example": "Illustrative; not production instructions"
+        }
+      },
+      {
+        "id": 26,
+        "type_id": "service",
+        "title": "Rail line-haul",
+        "summary": "Long-distance movement of coils or components.",
+        "details": "Long-distance movement of coils or components.",
+        "attributes": {}
+      },
+      {
+        "id": 27,
+        "type_id": "service",
+        "title": "Truck last mile",
+        "summary": "Deliver to the factory receiving dock.",
+        "details": "Deliver to the factory receiving dock.",
+        "attributes": {}
+      },
+      {
+        "id": 28,
+        "type_id": "process",
+        "title": "Dock appointment",
+        "summary": "Control arrival and unloading queues.",
+        "details": "Control arrival and unloading queues.",
+        "attributes": {
+          "example": "Illustrative; not production instructions"
+        }
+      },
+      {
+        "id": 29,
+        "type_id": "service",
+        "title": "Arrival queue",
+        "summary": "Illustrative wait: 0.5 day.",
+        "details": "Illustrative wait: 0.5 day.",
+        "attributes": {}
+      },
+      {
+        "id": 30,
+        "type_id": "service",
+        "title": "Unload + scan",
+        "summary": "Match rack identifiers to the advance shipment notice.",
+        "details": "Match rack identifiers to the advance shipment notice.",
+        "attributes": {}
+      },
+      {
+        "id": 31,
+        "type_id": "environment",
+        "title": "Receiving & warehouse",
+        "summary": "Company boundary begins at receiving. Inventory triangles in a traditional VSM are represented here by explicit queue cards.",
+        "details": "Company boundary begins at receiving. Inventory triangles in a traditional VSM are represented here by explicit queue cards.\n\nZoom into this card: process cards appear at 24%; individual work records at 85%. This card is a spatial container. Its placement does not imply ownership or a typed contains edge.",
+        "attributes": {}
+      },
+      {
+        "id": 32,
+        "type_id": "process",
+        "title": "Receive + inspect",
+        "summary": "Confirm quantity and supplier quality.",
+        "details": "Confirm quantity and supplier quality.",
+        "attributes": {
+          "example": "Illustrative; not production instructions"
+        }
+      },
+      {
+        "id": 33,
+        "type_id": "service",
+        "title": "Goods receipt",
+        "summary": "Record supplier lot and received quantity.",
+        "details": "Record supplier lot and received quantity.",
+        "attributes": {}
+      },
+      {
+        "id": 34,
+        "type_id": "service",
+        "title": "Incoming quality",
+        "summary": "Quarantine nonconforming material.",
+        "details": "Quarantine nonconforming material.",
+        "attributes": {}
+      },
+      {
+        "id": 35,
+        "type_id": "process",
+        "title": "Store inventory",
+        "summary": "Waiting ties up material and cash.",
+        "details": "Waiting ties up material and cash.",
+        "attributes": {
+          "example": "Illustrative; not production instructions"
+        }
+      },
+      {
+        "id": 36,
+        "type_id": "service",
+        "title": "Raw-material queue",
+        "summary": "Illustrative inventory: 960 car-equivalents = 2 days at 480 cars/day.",
+        "details": "Illustrative inventory: 960 car-equivalents = 2 days at 480 cars/day.",
+        "attributes": {}
+      },
+      {
+        "id": 37,
+        "type_id": "service",
+        "title": "Warehouse locations",
+        "summary": "FIFO by lot; record dwell time and replenishment point.",
+        "details": "FIFO by lot; record dwell time and replenishment point.",
+        "attributes": {}
+      },
+      {
+        "id": 38,
+        "type_id": "process",
+        "title": "Feed production",
+        "summary": "Pull parts to the line.",
+        "details": "Pull parts to the line.",
+        "attributes": {
+          "example": "Illustrative; not production instructions"
+        }
+      },
+      {
+        "id": 39,
+        "type_id": "service",
+        "title": "Kit + sequence",
+        "summary": "Prepare the next vehicle specification.",
+        "details": "Prepare the next vehicle specification.",
+        "attributes": {}
+      },
+      {
+        "id": 40,
+        "type_id": "service",
+        "title": "Line-side delivery",
+        "summary": "Tugger supplies point-of-use racks on a repeatable route.",
+        "details": "Tugger supplies point-of-use racks on a repeatable route.",
+        "attributes": {}
+      },
+      {
+        "id": 41,
+        "type_id": "process",
+        "title": "Stamping & body shop",
+        "summary": "Factory transformation: stamping feeds welding. C/T, changeover, uptime and queues are illustrative training values; zoom in to inspect.",
+        "details": "Factory transformation: stamping feeds welding. C/T, changeover, uptime and queues are illustrative training values; zoom in to inspect.\n\nZoom into this card: process cards appear at 24%; individual work records at 85%. This card is a spatial container. Its placement does not imply ownership or a typed contains edge.",
+        "attributes": {}
+      },
+      {
+        "id": 42,
+        "type_id": "process",
+        "title": "Stamping",
+        "summary": "C/T 60 s/car-equivalent; C/O 30 min; uptime 90%; 2 operators.",
+        "details": "C/T 60 s/car-equivalent; C/O 30 min; uptime 90%; 2 operators.",
+        "attributes": {
+          "example": "Illustrative; not production instructions"
+        }
+      },
+      {
+        "id": 43,
+        "type_id": "service",
+        "title": "Blank + press",
+        "summary": "Transfer sheet through dies; die changes drive batches.",
+        "details": "Transfer sheet through dies; die changes drive batches.",
+        "attributes": {}
+      },
+      {
+        "id": 44,
+        "type_id": "service",
+        "title": "Panel supermarket",
+        "summary": "Illustrative WIP 240 equivalents = 0.5 day at customer demand.",
+        "details": "Illustrative WIP 240 equivalents = 0.5 day at customer demand.",
+        "attributes": {}
+      },
+      {
+        "id": 45,
+        "type_id": "process",
+        "title": "Body welding",
+        "summary": "C/T 100 s/car; C/O 10 min; uptime 95%; 6 operators.",
+        "details": "C/T 100 s/car; C/O 10 min; uptime 95%; 6 operators.",
+        "attributes": {
+          "example": "Illustrative; not production instructions"
+        }
+      },
+      {
+        "id": 46,
+        "type_id": "service",
+        "title": "Fixture + join",
+        "summary": "Locate panels and robot-weld the body-in-white.",
+        "details": "Locate panels and robot-weld the body-in-white.",
+        "attributes": {}
+      },
+      {
+        "id": 47,
+        "type_id": "service",
+        "title": "Dimensional check",
+        "summary": "Measure critical points before paint.",
+        "details": "Measure critical points before paint.",
+        "attributes": {}
+      },
+      {
+        "id": 48,
+        "type_id": "process",
+        "title": "Body buffer",
+        "summary": "Protect paint from upstream variation.",
+        "details": "Protect paint from upstream variation.",
+        "attributes": {
+          "example": "Illustrative; not production instructions"
+        }
+      },
+      {
+        "id": 49,
+        "type_id": "service",
+        "title": "Body queue",
+        "summary": "Illustrative WIP 120 cars = 0.25 day.",
+        "details": "Illustrative WIP 120 cars = 0.25 day.",
+        "attributes": {}
+      },
+      {
+        "id": 50,
+        "type_id": "service",
+        "title": "Release to paint",
+        "summary": "Sequence bodies against color and production demand.",
+        "details": "Sequence bodies against color and production demand.",
+        "attributes": {}
+      },
+      {
+        "id": 51,
+        "type_id": "process",
+        "title": "Paint shop",
+        "summary": "Illustrative bottleneck: effective C/T 125 s/car exceeds takt 112.5 s/car. Batch ovens add residence time beyond this equivalent cycle time.",
+        "details": "Illustrative bottleneck: effective C/T 125 s/car exceeds takt 112.5 s/car. Batch ovens add residence time beyond this equivalent cycle time.\n\nZoom into this card: process cards appear at 24%; individual work records at 85%. This card is a spatial container. Its placement does not imply ownership or a typed contains edge.",
+        "attributes": {}
+      },
+      {
+        "id": 52,
+        "type_id": "process",
+        "title": "Pretreat + e-coat",
+        "summary": "Clean and protect the metal body.",
+        "details": "Clean and protect the metal body.",
+        "attributes": {
+          "example": "Illustrative; not production instructions"
+        }
+      },
+      {
+        "id": 53,
+        "type_id": "service",
+        "title": "Clean + phosphate",
+        "summary": "Surface preparation controls coating adhesion.",
+        "details": "Surface preparation controls coating adhesion.",
+        "attributes": {}
+      },
+      {
+        "id": 54,
+        "type_id": "service",
+        "title": "E-coat dip",
+        "summary": "Apply corrosion protection and drain.",
+        "details": "Apply corrosion protection and drain.",
+        "attributes": {}
+      },
+      {
+        "id": 55,
+        "type_id": "process",
+        "title": "Apply + cure",
+        "summary": "C/T 125 s/car equivalent; C/O 20 min; uptime 85%; 8 operators.",
+        "details": "C/T 125 s/car equivalent; C/O 20 min; uptime 85%; 8 operators.",
+        "attributes": {
+          "example": "Illustrative; not production instructions"
+        }
+      },
+      {
+        "id": 56,
+        "type_id": "service",
+        "title": "Primer + color",
+        "summary": "Apply coatings; group colors to reduce changeovers.",
+        "details": "Apply coatings; group colors to reduce changeovers.",
+        "attributes": {}
+      },
+      {
+        "id": 57,
+        "type_id": "service",
+        "title": "Oven cure",
+        "summary": "Batch residence time is distinct from line output cadence.",
+        "details": "Batch residence time is distinct from line output cadence.",
+        "attributes": {}
+      },
+      {
+        "id": 58,
+        "type_id": "process",
+        "title": "Inspect + buffer",
+        "summary": "Rework and queues can dominate lead time.",
+        "details": "Rework and queues can dominate lead time.",
+        "attributes": {
+          "example": "Illustrative; not production instructions"
+        }
+      },
+      {
+        "id": 59,
+        "type_id": "service",
+        "title": "Finish inspection",
+        "summary": "Record defects and route rework separately.",
+        "details": "Record defects and route rework separately.",
+        "attributes": {}
+      },
+      {
+        "id": 60,
+        "type_id": "service",
+        "title": "Painted-body queue",
+        "summary": "Illustrative WIP 480 cars = 1 day; investigate bottleneck impact.",
+        "details": "Illustrative WIP 480 cars = 1 day; investigate bottleneck impact.",
+        "attributes": {}
+      },
+      {
+        "id": 61,
+        "type_id": "process",
+        "title": "Final assembly & test",
+        "summary": "C/T 110 s/car; C/O 0 min model-mix assumption; uptime 95%; 24 operators. Compare each station with takt before inferring total capacity.",
+        "details": "C/T 110 s/car; C/O 0 min model-mix assumption; uptime 95%; 24 operators. Compare each station with takt before inferring total capacity.\n\nZoom into this card: process cards appear at 24%; individual work records at 85%. This card is a spatial container. Its placement does not imply ownership or a typed contains edge.",
+        "attributes": {}
+      },
+      {
+        "id": 62,
+        "type_id": "process",
+        "title": "Trim + chassis",
+        "summary": "Fit modules to the painted body.",
+        "details": "Fit modules to the painted body.",
+        "attributes": {
+          "example": "Illustrative; not production instructions"
+        }
+      },
+      {
+        "id": 63,
+        "type_id": "service",
+        "title": "Interior trim",
+        "summary": "Install harness, cockpit, seats and glazing.",
+        "details": "Install harness, cockpit, seats and glazing.",
+        "attributes": {}
+      },
+      {
+        "id": 64,
+        "type_id": "service",
+        "title": "Chassis marriage",
+        "summary": "Join body with suspension and powertrain.",
+        "details": "Join body with suspension and powertrain.",
+        "attributes": {}
+      },
+      {
+        "id": 65,
+        "type_id": "process",
+        "title": "Complete vehicle",
+        "summary": "Sequence parts by vehicle specification.",
+        "details": "Sequence parts by vehicle specification.",
+        "attributes": {
+          "example": "Illustrative; not production instructions"
+        }
+      },
+      {
+        "id": 66,
+        "type_id": "service",
+        "title": "Fluids + wheels",
+        "summary": "Fill systems, mount wheels and torque critical joints.",
+        "details": "Fill systems, mount wheels and torque critical joints.",
+        "attributes": {}
+      },
+      {
+        "id": 67,
+        "type_id": "service",
+        "title": "Software + calibration",
+        "summary": "Load configuration and calibrate vehicle systems.",
+        "details": "Load configuration and calibrate vehicle systems.",
+        "attributes": {}
+      },
+      {
+        "id": 68,
+        "type_id": "process",
+        "title": "End-of-line test",
+        "summary": "Illustrative C/T 80 s/car; repair loop shown in notes.",
+        "details": "Illustrative C/T 80 s/car; repair loop shown in notes.",
+        "attributes": {
+          "example": "Illustrative; not production instructions"
+        }
+      },
+      {
+        "id": 69,
+        "type_id": "service",
+        "title": "Safety + function",
+        "summary": "Brake, electrical and leak checks.",
+        "details": "Brake, electrical and leak checks.",
+        "attributes": {}
+      },
+      {
+        "id": 70,
+        "type_id": "service",
+        "title": "Release or repair",
+        "summary": "Quality gate releases conforming cars; defects return for repair and retest.",
+        "details": "Quality gate releases conforming cars; defects return for repair and retest.",
+        "attributes": {}
+      },
+      {
+        "id": 71,
+        "type_id": "environment",
+        "title": "Finished goods & delivery",
+        "summary": "Company yard and external transport separate manufacturing completion from customer receipt.",
+        "details": "Company yard and external transport separate manufacturing completion from customer receipt.\n\nZoom into this card: process cards appear at 24%; individual work records at 85%. This card is a spatial container. Its placement does not imply ownership or a typed contains edge.",
+        "attributes": {}
+      },
+      {
+        "id": 72,
+        "type_id": "process",
+        "title": "Finished-car warehouse",
+        "summary": "Inventory waits for dealer allocation.",
+        "details": "Inventory waits for dealer allocation.",
+        "attributes": {
+          "example": "Illustrative; not production instructions"
+        }
+      },
+      {
+        "id": 73,
+        "type_id": "service",
+        "title": "Vehicle yard",
+        "summary": "Illustrative inventory 720 cars = 1.5 days at demand.",
+        "details": "Illustrative inventory 720 cars = 1.5 days at demand.",
+        "attributes": {}
+      },
+      {
+        "id": 74,
+        "type_id": "service",
+        "title": "Allocate VIN",
+        "summary": "Match specification and sales order.",
+        "details": "Match specification and sales order.",
+        "attributes": {}
+      },
+      {
+        "id": 75,
+        "type_id": "process",
+        "title": "Outbound logistics",
+        "summary": "Cross the factory boundary to the dealer.",
+        "details": "Cross the factory boundary to the dealer.",
+        "attributes": {
+          "example": "Illustrative; not production instructions"
+        }
+      },
+      {
+        "id": 76,
+        "type_id": "service",
+        "title": "Rail or car carrier",
+        "summary": "Illustrative transport + queue: 2 days.",
+        "details": "Illustrative transport + queue: 2 days.",
+        "attributes": {}
+      },
+      {
+        "id": 77,
+        "type_id": "service",
+        "title": "Dealer receipt",
+        "summary": "Check VIN, condition and delivery record.",
+        "details": "Check VIN, condition and delivery record.",
+        "attributes": {}
+      },
+      {
+        "id": 78,
+        "type_id": "process",
+        "title": "Delivery confirmation",
+        "summary": "Close the material-flow record.",
+        "details": "Close the material-flow record.",
+        "attributes": {
+          "example": "Illustrative; not production instructions"
+        }
+      },
+      {
+        "id": 79,
+        "type_id": "service",
+        "title": "Proof of delivery",
+        "summary": "Record custody transfer and damage exceptions.",
+        "details": "Record custody transfer and damage exceptions.",
+        "attributes": {}
+      },
+      {
+        "id": 80,
+        "type_id": "service",
+        "title": "Replenishment feedback",
+        "summary": "Actual sales inform production planning, not only dispatch counts.",
+        "details": "Actual sales inform production planning, not only dispatch counts.",
+        "attributes": {}
+      },
+      {
+        "id": 81,
+        "type_id": "organization",
+        "title": "Dealer lot & customer demand",
+        "summary": "External downstream boundary. Demand 480 cars/day; available production time 2 × 450 min/day = 54,000 s/day; takt = 112.5 s/car. Fictional planning example.",
+        "details": "External downstream boundary. Demand 480 cars/day; available production time 2 × 450 min/day = 54,000 s/day; takt = 112.5 s/car. Fictional planning example.\n\nZoom into this card: process cards appear at 24%; individual work records at 85%. This card is a spatial container. Its placement does not imply ownership or a typed contains edge.",
+        "attributes": {}
+      },
+      {
+        "id": 82,
+        "type_id": "process",
+        "title": "Sales lot",
+        "summary": "Inventory remains lead time until a customer takes delivery.",
+        "details": "Inventory remains lead time until a customer takes delivery.",
+        "attributes": {
+          "example": "Illustrative; not production instructions"
+        }
+      },
+      {
+        "id": 83,
+        "type_id": "service",
+        "title": "Dealer stock",
+        "summary": "Illustrative stock 1,440 cars = 3 days at aggregate demand.",
+        "details": "Illustrative stock 1,440 cars = 3 days at aggregate demand.",
+        "attributes": {}
+      },
+      {
+        "id": 84,
+        "type_id": "service",
+        "title": "PDI",
+        "summary": "Pre-delivery inspection, cleaning and accessories.",
+        "details": "Pre-delivery inspection, cleaning and accessories.",
+        "attributes": {}
+      },
+      {
+        "id": 85,
+        "type_id": "process",
+        "title": "Customer sale",
+        "summary": "Customer order is the demand signal.",
+        "details": "Customer order is the demand signal.",
+        "attributes": {
+          "example": "Illustrative; not production instructions"
+        }
+      },
+      {
+        "id": 86,
+        "type_id": "service",
+        "title": "Order + handover",
+        "summary": "Match customer needs and release the vehicle.",
+        "details": "Match customer needs and release the vehicle.",
+        "attributes": {}
+      },
+      {
+        "id": 87,
+        "type_id": "service",
+        "title": "Actual sales data",
+        "summary": "Send demand and mix, not just a shipment forecast.",
+        "details": "Send demand and mix, not just a shipment forecast.",
+        "attributes": {}
+      },
+      {
+        "id": 88,
+        "type_id": "process",
+        "title": "Production control",
+        "summary": "Information flow: schedules and replenishment signals run upstream.",
+        "details": "Information flow: schedules and replenishment signals run upstream.",
+        "attributes": {
+          "example": "Illustrative; not production instructions"
+        }
+      },
+      {
+        "id": 89,
+        "type_id": "service",
+        "title": "Calculate takt",
+        "summary": "54,000 available seconds / 480 demanded cars = 112.5 s/car.",
+        "details": "54,000 available seconds / 480 demanded cars = 112.5 s/car.",
+        "attributes": {}
+      },
+      {
+        "id": 90,
+        "type_id": "service",
+        "title": "Level + pull",
+        "summary": "Level model mix; compare C/T and WIP; the 125 s paint step requires improvement.",
+        "details": "Level model mix; compare C/T and WIP; the 125 s paint step requires improvement.",
+        "attributes": {}
+      }
+    ],
+    "relationships": [
+      {
+        "id": "rel-3-4-delivers",
+        "kind": "delivers",
+        "source_id": 3,
+        "target_id": 4,
+        "label": "delivers"
+      },
+      {
+        "id": "rel-6-7-delivers",
+        "kind": "delivers",
+        "source_id": 6,
+        "target_id": 7,
+        "label": "delivers"
+      },
+      {
+        "id": "rel-9-10-delivers",
+        "kind": "delivers",
+        "source_id": 9,
+        "target_id": 10,
+        "label": "delivers"
+      },
+      {
+        "id": "rel-2-5-delivers",
+        "kind": "delivers",
+        "source_id": 2,
+        "target_id": 5,
+        "label": "delivers"
+      },
+      {
+        "id": "rel-5-8-delivers",
+        "kind": "delivers",
+        "source_id": 5,
+        "target_id": 8,
+        "label": "delivers"
+      },
+      {
+        "id": "rel-13-14-delivers",
+        "kind": "delivers",
+        "source_id": 13,
+        "target_id": 14,
+        "label": "delivers"
+      },
+      {
+        "id": "rel-16-17-delivers",
+        "kind": "delivers",
+        "source_id": 16,
+        "target_id": 17,
+        "label": "delivers"
+      },
+      {
+        "id": "rel-19-20-delivers",
+        "kind": "delivers",
+        "source_id": 19,
+        "target_id": 20,
+        "label": "delivers"
+      },
+      {
+        "id": "rel-12-15-delivers",
+        "kind": "delivers",
+        "source_id": 12,
+        "target_id": 15,
+        "label": "delivers"
+      },
+      {
+        "id": "rel-15-18-delivers",
+        "kind": "delivers",
+        "source_id": 15,
+        "target_id": 18,
+        "label": "delivers"
+      },
+      {
+        "id": "rel-23-24-delivers",
+        "kind": "delivers",
+        "source_id": 23,
+        "target_id": 24,
+        "label": "delivers"
+      },
+      {
+        "id": "rel-26-27-delivers",
+        "kind": "delivers",
+        "source_id": 26,
+        "target_id": 27,
+        "label": "delivers"
+      },
+      {
+        "id": "rel-29-30-delivers",
+        "kind": "delivers",
+        "source_id": 29,
+        "target_id": 30,
+        "label": "delivers"
+      },
+      {
+        "id": "rel-22-25-delivers",
+        "kind": "delivers",
+        "source_id": 22,
+        "target_id": 25,
+        "label": "delivers"
+      },
+      {
+        "id": "rel-25-28-delivers",
+        "kind": "delivers",
+        "source_id": 25,
+        "target_id": 28,
+        "label": "delivers"
+      },
+      {
+        "id": "rel-33-34-delivers",
+        "kind": "delivers",
+        "source_id": 33,
+        "target_id": 34,
+        "label": "delivers"
+      },
+      {
+        "id": "rel-36-37-delivers",
+        "kind": "delivers",
+        "source_id": 36,
+        "target_id": 37,
+        "label": "delivers"
+      },
+      {
+        "id": "rel-39-40-delivers",
+        "kind": "delivers",
+        "source_id": 39,
+        "target_id": 40,
+        "label": "delivers"
+      },
+      {
+        "id": "rel-32-35-delivers",
+        "kind": "delivers",
+        "source_id": 32,
+        "target_id": 35,
+        "label": "delivers"
+      },
+      {
+        "id": "rel-35-38-delivers",
+        "kind": "delivers",
+        "source_id": 35,
+        "target_id": 38,
+        "label": "delivers"
+      },
+      {
+        "id": "rel-43-44-delivers",
+        "kind": "delivers",
+        "source_id": 43,
+        "target_id": 44,
+        "label": "delivers"
+      },
+      {
+        "id": "rel-46-47-delivers",
+        "kind": "delivers",
+        "source_id": 46,
+        "target_id": 47,
+        "label": "delivers"
+      },
+      {
+        "id": "rel-49-50-delivers",
+        "kind": "delivers",
+        "source_id": 49,
+        "target_id": 50,
+        "label": "delivers"
+      },
+      {
+        "id": "rel-42-45-delivers",
+        "kind": "delivers",
+        "source_id": 42,
+        "target_id": 45,
+        "label": "delivers"
+      },
+      {
+        "id": "rel-45-48-delivers",
+        "kind": "delivers",
+        "source_id": 45,
+        "target_id": 48,
+        "label": "delivers"
+      },
+      {
+        "id": "rel-53-54-delivers",
+        "kind": "delivers",
+        "source_id": 53,
+        "target_id": 54,
+        "label": "delivers"
+      },
+      {
+        "id": "rel-56-57-delivers",
+        "kind": "delivers",
+        "source_id": 56,
+        "target_id": 57,
+        "label": "delivers"
+      },
+      {
+        "id": "rel-59-60-delivers",
+        "kind": "delivers",
+        "source_id": 59,
+        "target_id": 60,
+        "label": "delivers"
+      },
+      {
+        "id": "rel-52-55-delivers",
+        "kind": "delivers",
+        "source_id": 52,
+        "target_id": 55,
+        "label": "delivers"
+      },
+      {
+        "id": "rel-55-58-delivers",
+        "kind": "delivers",
+        "source_id": 55,
+        "target_id": 58,
+        "label": "delivers"
+      },
+      {
+        "id": "rel-63-64-delivers",
+        "kind": "delivers",
+        "source_id": 63,
+        "target_id": 64,
+        "label": "delivers"
+      },
+      {
+        "id": "rel-66-67-delivers",
+        "kind": "delivers",
+        "source_id": 66,
+        "target_id": 67,
+        "label": "delivers"
+      },
+      {
+        "id": "rel-69-70-delivers",
+        "kind": "delivers",
+        "source_id": 69,
+        "target_id": 70,
+        "label": "delivers"
+      },
+      {
+        "id": "rel-62-65-delivers",
+        "kind": "delivers",
+        "source_id": 62,
+        "target_id": 65,
+        "label": "delivers"
+      },
+      {
+        "id": "rel-65-68-delivers",
+        "kind": "delivers",
+        "source_id": 65,
+        "target_id": 68,
+        "label": "delivers"
+      },
+      {
+        "id": "rel-73-74-delivers",
+        "kind": "delivers",
+        "source_id": 73,
+        "target_id": 74,
+        "label": "delivers"
+      },
+      {
+        "id": "rel-76-77-delivers",
+        "kind": "delivers",
+        "source_id": 76,
+        "target_id": 77,
+        "label": "delivers"
+      },
+      {
+        "id": "rel-79-80-delivers",
+        "kind": "delivers",
+        "source_id": 79,
+        "target_id": 80,
+        "label": "delivers"
+      },
+      {
+        "id": "rel-72-75-delivers",
+        "kind": "delivers",
+        "source_id": 72,
+        "target_id": 75,
+        "label": "delivers"
+      },
+      {
+        "id": "rel-75-78-delivers",
+        "kind": "delivers",
+        "source_id": 75,
+        "target_id": 78,
+        "label": "delivers"
+      },
+      {
+        "id": "rel-83-84-delivers",
+        "kind": "delivers",
+        "source_id": 83,
+        "target_id": 84,
+        "label": "delivers"
+      },
+      {
+        "id": "rel-86-87-delivers",
+        "kind": "delivers",
+        "source_id": 86,
+        "target_id": 87,
+        "label": "delivers"
+      },
+      {
+        "id": "rel-89-90-delivers",
+        "kind": "delivers",
+        "source_id": 89,
+        "target_id": 90,
+        "label": "delivers"
+      },
+      {
+        "id": "rel-82-85-delivers",
+        "kind": "delivers",
+        "source_id": 82,
+        "target_id": 85,
+        "label": "delivers"
+      },
+      {
+        "id": "rel-85-88-delivers",
+        "kind": "delivers",
+        "source_id": 85,
+        "target_id": 88,
+        "label": "delivers"
+      },
+      {
+        "id": "rel-1-11-delivers",
+        "kind": "delivers",
+        "source_id": 1,
+        "target_id": 11,
+        "label": "delivers"
+      },
+      {
+        "id": "rel-8-12-delivers",
+        "kind": "delivers",
+        "source_id": 8,
+        "target_id": 12,
+        "label": "delivers"
+      },
+      {
+        "id": "rel-10-13-delivers",
+        "kind": "delivers",
+        "source_id": 10,
+        "target_id": 13,
+        "label": "delivers"
+      },
+      {
+        "id": "rel-11-21-delivers",
+        "kind": "delivers",
+        "source_id": 11,
+        "target_id": 21,
+        "label": "delivers"
+      },
+      {
+        "id": "rel-18-22-delivers",
+        "kind": "delivers",
+        "source_id": 18,
+        "target_id": 22,
+        "label": "delivers"
+      },
+      {
+        "id": "rel-20-23-delivers",
+        "kind": "delivers",
+        "source_id": 20,
+        "target_id": 23,
+        "label": "delivers"
+      },
+      {
+        "id": "rel-21-31-delivers",
+        "kind": "delivers",
+        "source_id": 21,
+        "target_id": 31,
+        "label": "delivers"
+      },
+      {
+        "id": "rel-28-32-delivers",
+        "kind": "delivers",
+        "source_id": 28,
+        "target_id": 32,
+        "label": "delivers"
+      },
+      {
+        "id": "rel-30-33-delivers",
+        "kind": "delivers",
+        "source_id": 30,
+        "target_id": 33,
+        "label": "delivers"
+      },
+      {
+        "id": "rel-31-41-delivers",
+        "kind": "delivers",
+        "source_id": 31,
+        "target_id": 41,
+        "label": "delivers"
+      },
+      {
+        "id": "rel-38-42-delivers",
+        "kind": "delivers",
+        "source_id": 38,
+        "target_id": 42,
+        "label": "delivers"
+      },
+      {
+        "id": "rel-40-43-delivers",
+        "kind": "delivers",
+        "source_id": 40,
+        "target_id": 43,
+        "label": "delivers"
+      },
+      {
+        "id": "rel-41-51-delivers",
+        "kind": "delivers",
+        "source_id": 41,
+        "target_id": 51,
+        "label": "delivers"
+      },
+      {
+        "id": "rel-48-52-delivers",
+        "kind": "delivers",
+        "source_id": 48,
+        "target_id": 52,
+        "label": "delivers"
+      },
+      {
+        "id": "rel-50-53-delivers",
+        "kind": "delivers",
+        "source_id": 50,
+        "target_id": 53,
+        "label": "delivers"
+      },
+      {
+        "id": "rel-51-61-delivers",
+        "kind": "delivers",
+        "source_id": 51,
+        "target_id": 61,
+        "label": "delivers"
+      },
+      {
+        "id": "rel-58-62-delivers",
+        "kind": "delivers",
+        "source_id": 58,
+        "target_id": 62,
+        "label": "delivers"
+      },
+      {
+        "id": "rel-60-63-delivers",
+        "kind": "delivers",
+        "source_id": 60,
+        "target_id": 63,
+        "label": "delivers"
+      },
+      {
+        "id": "rel-61-71-delivers",
+        "kind": "delivers",
+        "source_id": 61,
+        "target_id": 71,
+        "label": "delivers"
+      },
+      {
+        "id": "rel-68-72-delivers",
+        "kind": "delivers",
+        "source_id": 68,
+        "target_id": 72,
+        "label": "delivers"
+      },
+      {
+        "id": "rel-70-73-delivers",
+        "kind": "delivers",
+        "source_id": 70,
+        "target_id": 73,
+        "label": "delivers"
+      },
+      {
+        "id": "rel-71-81-delivers",
+        "kind": "delivers",
+        "source_id": 71,
+        "target_id": 81,
+        "label": "delivers"
+      },
+      {
+        "id": "rel-78-82-delivers",
+        "kind": "delivers",
+        "source_id": 78,
+        "target_id": 82,
+        "label": "delivers"
+      },
+      {
+        "id": "rel-80-83-delivers",
+        "kind": "delivers",
+        "source_id": 80,
+        "target_id": 83,
+        "label": "delivers"
+      },
+      {
+        "id": "rel-32-88-depends-on",
+        "kind": "depends_on",
+        "source_id": 32,
+        "target_id": 88,
+        "label": "depends on"
+      },
+      {
+        "id": "rel-42-88-depends-on",
+        "kind": "depends_on",
+        "source_id": 42,
+        "target_id": 88,
+        "label": "depends on"
+      },
+      {
+        "id": "rel-52-88-depends-on",
+        "kind": "depends_on",
+        "source_id": 52,
+        "target_id": 88,
+        "label": "depends on"
+      },
+      {
+        "id": "rel-62-88-depends-on",
+        "kind": "depends_on",
+        "source_id": 62,
+        "target_id": 88,
+        "label": "depends on"
+      },
+      {
+        "id": "rel-72-88-depends-on",
+        "kind": "depends_on",
+        "source_id": 72,
+        "target_id": 88,
+        "label": "depends on"
+      },
+      {
+        "id": "rel-12-88-depends-on",
+        "kind": "depends_on",
+        "source_id": 12,
+        "target_id": 88,
+        "label": "depends on"
+      }
+    ],
+    "lenses": [
+      {
+        "id": "canvas",
+        "title": "Canvas",
+        "filter": {},
+        "placements": [
+          {
+            "concept_id": 1,
+            "bounds": {
+              "origin": {
+                "x": 0.0,
+                "y": 0.0
+              },
+              "size": {
+                "x": 1800.0,
+                "y": 1250.0
+              }
+            }
+          },
+          {
+            "concept_id": 2,
+            "bounds": {
+              "origin": {
+                "x": 60.0,
+                "y": 300.0
+              },
+              "size": {
+                "x": 510.0,
+                "y": 870.0
+              }
+            }
+          },
+          {
+            "concept_id": 3,
+            "bounds": {
+              "origin": {
+                "x": 85.0,
+                "y": 570.0
+              },
+              "size": {
+                "x": 460.0,
+                "y": 210.0
+              }
+            }
+          },
+          {
+            "concept_id": 4,
+            "bounds": {
+              "origin": {
+                "x": 85.0,
+                "y": 830.0
+              },
+              "size": {
+                "x": 460.0,
+                "y": 210.0
+              }
+            }
+          },
+          {
+            "concept_id": 5,
+            "bounds": {
+              "origin": {
+                "x": 630.0,
+                "y": 300.0
+              },
+              "size": {
+                "x": 510.0,
+                "y": 870.0
+              }
+            }
+          },
+          {
+            "concept_id": 6,
+            "bounds": {
+              "origin": {
+                "x": 655.0,
+                "y": 570.0
+              },
+              "size": {
+                "x": 460.0,
+                "y": 210.0
+              }
+            }
+          },
+          {
+            "concept_id": 7,
+            "bounds": {
+              "origin": {
+                "x": 655.0,
+                "y": 830.0
+              },
+              "size": {
+                "x": 460.0,
+                "y": 210.0
+              }
+            }
+          },
+          {
+            "concept_id": 8,
+            "bounds": {
+              "origin": {
+                "x": 1200.0,
+                "y": 300.0
+              },
+              "size": {
+                "x": 510.0,
+                "y": 870.0
+              }
+            }
+          },
+          {
+            "concept_id": 9,
+            "bounds": {
+              "origin": {
+                "x": 1225.0,
+                "y": 570.0
+              },
+              "size": {
+                "x": 460.0,
+                "y": 210.0
+              }
+            }
+          },
+          {
+            "concept_id": 10,
+            "bounds": {
+              "origin": {
+                "x": 1225.0,
+                "y": 830.0
+              },
+              "size": {
+                "x": 460.0,
+                "y": 210.0
+              }
+            }
+          },
+          {
+            "concept_id": 11,
+            "bounds": {
+              "origin": {
+                "x": 2200.0,
+                "y": 0.0
+              },
+              "size": {
+                "x": 1800.0,
+                "y": 1250.0
+              }
+            }
+          },
+          {
+            "concept_id": 12,
+            "bounds": {
+              "origin": {
+                "x": 2260.0,
+                "y": 300.0
+              },
+              "size": {
+                "x": 510.0,
+                "y": 870.0
+              }
+            }
+          },
+          {
+            "concept_id": 13,
+            "bounds": {
+              "origin": {
+                "x": 2285.0,
+                "y": 570.0
+              },
+              "size": {
+                "x": 460.0,
+                "y": 210.0
+              }
+            }
+          },
+          {
+            "concept_id": 14,
+            "bounds": {
+              "origin": {
+                "x": 2285.0,
+                "y": 830.0
+              },
+              "size": {
+                "x": 460.0,
+                "y": 210.0
+              }
+            }
+          },
+          {
+            "concept_id": 15,
+            "bounds": {
+              "origin": {
+                "x": 2830.0,
+                "y": 300.0
+              },
+              "size": {
+                "x": 510.0,
+                "y": 870.0
+              }
+            }
+          },
+          {
+            "concept_id": 16,
+            "bounds": {
+              "origin": {
+                "x": 2855.0,
+                "y": 570.0
+              },
+              "size": {
+                "x": 460.0,
+                "y": 210.0
+              }
+            }
+          },
+          {
+            "concept_id": 17,
+            "bounds": {
+              "origin": {
+                "x": 2855.0,
+                "y": 830.0
+              },
+              "size": {
+                "x": 460.0,
+                "y": 210.0
+              }
+            }
+          },
+          {
+            "concept_id": 18,
+            "bounds": {
+              "origin": {
+                "x": 3400.0,
+                "y": 300.0
+              },
+              "size": {
+                "x": 510.0,
+                "y": 870.0
+              }
+            }
+          },
+          {
+            "concept_id": 19,
+            "bounds": {
+              "origin": {
+                "x": 3425.0,
+                "y": 570.0
+              },
+              "size": {
+                "x": 460.0,
+                "y": 210.0
+              }
+            }
+          },
+          {
+            "concept_id": 20,
+            "bounds": {
+              "origin": {
+                "x": 3425.0,
+                "y": 830.0
+              },
+              "size": {
+                "x": 460.0,
+                "y": 210.0
+              }
+            }
+          },
+          {
+            "concept_id": 21,
+            "bounds": {
+              "origin": {
+                "x": 4400.0,
+                "y": 0.0
+              },
+              "size": {
+                "x": 1800.0,
+                "y": 1250.0
+              }
+            }
+          },
+          {
+            "concept_id": 22,
+            "bounds": {
+              "origin": {
+                "x": 4460.0,
+                "y": 300.0
+              },
+              "size": {
+                "x": 510.0,
+                "y": 870.0
+              }
+            }
+          },
+          {
+            "concept_id": 23,
+            "bounds": {
+              "origin": {
+                "x": 4485.0,
+                "y": 570.0
+              },
+              "size": {
+                "x": 460.0,
+                "y": 210.0
+              }
+            }
+          },
+          {
+            "concept_id": 24,
+            "bounds": {
+              "origin": {
+                "x": 4485.0,
+                "y": 830.0
+              },
+              "size": {
+                "x": 460.0,
+                "y": 210.0
+              }
+            }
+          },
+          {
+            "concept_id": 25,
+            "bounds": {
+              "origin": {
+                "x": 5030.0,
+                "y": 300.0
+              },
+              "size": {
+                "x": 510.0,
+                "y": 870.0
+              }
+            }
+          },
+          {
+            "concept_id": 26,
+            "bounds": {
+              "origin": {
+                "x": 5055.0,
+                "y": 570.0
+              },
+              "size": {
+                "x": 460.0,
+                "y": 210.0
+              }
+            }
+          },
+          {
+            "concept_id": 27,
+            "bounds": {
+              "origin": {
+                "x": 5055.0,
+                "y": 830.0
+              },
+              "size": {
+                "x": 460.0,
+                "y": 210.0
+              }
+            }
+          },
+          {
+            "concept_id": 28,
+            "bounds": {
+              "origin": {
+                "x": 5600.0,
+                "y": 300.0
+              },
+              "size": {
+                "x": 510.0,
+                "y": 870.0
+              }
+            }
+          },
+          {
+            "concept_id": 29,
+            "bounds": {
+              "origin": {
+                "x": 5625.0,
+                "y": 570.0
+              },
+              "size": {
+                "x": 460.0,
+                "y": 210.0
+              }
+            }
+          },
+          {
+            "concept_id": 30,
+            "bounds": {
+              "origin": {
+                "x": 5625.0,
+                "y": 830.0
+              },
+              "size": {
+                "x": 460.0,
+                "y": 210.0
+              }
+            }
+          },
+          {
+            "concept_id": 31,
+            "bounds": {
+              "origin": {
+                "x": 4400.0,
+                "y": 1650.0
+              },
+              "size": {
+                "x": 1800.0,
+                "y": 1250.0
+              }
+            }
+          },
+          {
+            "concept_id": 32,
+            "bounds": {
+              "origin": {
+                "x": 4460.0,
+                "y": 1950.0
+              },
+              "size": {
+                "x": 510.0,
+                "y": 870.0
+              }
+            }
+          },
+          {
+            "concept_id": 33,
+            "bounds": {
+              "origin": {
+                "x": 4485.0,
+                "y": 2220.0
+              },
+              "size": {
+                "x": 460.0,
+                "y": 210.0
+              }
+            }
+          },
+          {
+            "concept_id": 34,
+            "bounds": {
+              "origin": {
+                "x": 4485.0,
+                "y": 2480.0
+              },
+              "size": {
+                "x": 460.0,
+                "y": 210.0
+              }
+            }
+          },
+          {
+            "concept_id": 35,
+            "bounds": {
+              "origin": {
+                "x": 5030.0,
+                "y": 1950.0
+              },
+              "size": {
+                "x": 510.0,
+                "y": 870.0
+              }
+            }
+          },
+          {
+            "concept_id": 36,
+            "bounds": {
+              "origin": {
+                "x": 5055.0,
+                "y": 2220.0
+              },
+              "size": {
+                "x": 460.0,
+                "y": 210.0
+              }
+            }
+          },
+          {
+            "concept_id": 37,
+            "bounds": {
+              "origin": {
+                "x": 5055.0,
+                "y": 2480.0
+              },
+              "size": {
+                "x": 460.0,
+                "y": 210.0
+              }
+            }
+          },
+          {
+            "concept_id": 38,
+            "bounds": {
+              "origin": {
+                "x": 5600.0,
+                "y": 1950.0
+              },
+              "size": {
+                "x": 510.0,
+                "y": 870.0
+              }
+            }
+          },
+          {
+            "concept_id": 39,
+            "bounds": {
+              "origin": {
+                "x": 5625.0,
+                "y": 2220.0
+              },
+              "size": {
+                "x": 460.0,
+                "y": 210.0
+              }
+            }
+          },
+          {
+            "concept_id": 40,
+            "bounds": {
+              "origin": {
+                "x": 5625.0,
+                "y": 2480.0
+              },
+              "size": {
+                "x": 460.0,
+                "y": 210.0
+              }
+            }
+          },
+          {
+            "concept_id": 41,
+            "bounds": {
+              "origin": {
+                "x": 2200.0,
+                "y": 1650.0
+              },
+              "size": {
+                "x": 1800.0,
+                "y": 1250.0
+              }
+            }
+          },
+          {
+            "concept_id": 42,
+            "bounds": {
+              "origin": {
+                "x": 2260.0,
+                "y": 1950.0
+              },
+              "size": {
+                "x": 510.0,
+                "y": 870.0
+              }
+            }
+          },
+          {
+            "concept_id": 43,
+            "bounds": {
+              "origin": {
+                "x": 2285.0,
+                "y": 2220.0
+              },
+              "size": {
+                "x": 460.0,
+                "y": 210.0
+              }
+            }
+          },
+          {
+            "concept_id": 44,
+            "bounds": {
+              "origin": {
+                "x": 2285.0,
+                "y": 2480.0
+              },
+              "size": {
+                "x": 460.0,
+                "y": 210.0
+              }
+            }
+          },
+          {
+            "concept_id": 45,
+            "bounds": {
+              "origin": {
+                "x": 2830.0,
+                "y": 1950.0
+              },
+              "size": {
+                "x": 510.0,
+                "y": 870.0
+              }
+            }
+          },
+          {
+            "concept_id": 46,
+            "bounds": {
+              "origin": {
+                "x": 2855.0,
+                "y": 2220.0
+              },
+              "size": {
+                "x": 460.0,
+                "y": 210.0
+              }
+            }
+          },
+          {
+            "concept_id": 47,
+            "bounds": {
+              "origin": {
+                "x": 2855.0,
+                "y": 2480.0
+              },
+              "size": {
+                "x": 460.0,
+                "y": 210.0
+              }
+            }
+          },
+          {
+            "concept_id": 48,
+            "bounds": {
+              "origin": {
+                "x": 3400.0,
+                "y": 1950.0
+              },
+              "size": {
+                "x": 510.0,
+                "y": 870.0
+              }
+            }
+          },
+          {
+            "concept_id": 49,
+            "bounds": {
+              "origin": {
+                "x": 3425.0,
+                "y": 2220.0
+              },
+              "size": {
+                "x": 460.0,
+                "y": 210.0
+              }
+            }
+          },
+          {
+            "concept_id": 50,
+            "bounds": {
+              "origin": {
+                "x": 3425.0,
+                "y": 2480.0
+              },
+              "size": {
+                "x": 460.0,
+                "y": 210.0
+              }
+            }
+          },
+          {
+            "concept_id": 51,
+            "bounds": {
+              "origin": {
+                "x": 0.0,
+                "y": 1650.0
+              },
+              "size": {
+                "x": 1800.0,
+                "y": 1250.0
+              }
+            }
+          },
+          {
+            "concept_id": 52,
+            "bounds": {
+              "origin": {
+                "x": 60.0,
+                "y": 1950.0
+              },
+              "size": {
+                "x": 510.0,
+                "y": 870.0
+              }
+            }
+          },
+          {
+            "concept_id": 53,
+            "bounds": {
+              "origin": {
+                "x": 85.0,
+                "y": 2220.0
+              },
+              "size": {
+                "x": 460.0,
+                "y": 210.0
+              }
+            }
+          },
+          {
+            "concept_id": 54,
+            "bounds": {
+              "origin": {
+                "x": 85.0,
+                "y": 2480.0
+              },
+              "size": {
+                "x": 460.0,
+                "y": 210.0
+              }
+            }
+          },
+          {
+            "concept_id": 55,
+            "bounds": {
+              "origin": {
+                "x": 630.0,
+                "y": 1950.0
+              },
+              "size": {
+                "x": 510.0,
+                "y": 870.0
+              }
+            }
+          },
+          {
+            "concept_id": 56,
+            "bounds": {
+              "origin": {
+                "x": 655.0,
+                "y": 2220.0
+              },
+              "size": {
+                "x": 460.0,
+                "y": 210.0
+              }
+            }
+          },
+          {
+            "concept_id": 57,
+            "bounds": {
+              "origin": {
+                "x": 655.0,
+                "y": 2480.0
+              },
+              "size": {
+                "x": 460.0,
+                "y": 210.0
+              }
+            }
+          },
+          {
+            "concept_id": 58,
+            "bounds": {
+              "origin": {
+                "x": 1200.0,
+                "y": 1950.0
+              },
+              "size": {
+                "x": 510.0,
+                "y": 870.0
+              }
+            }
+          },
+          {
+            "concept_id": 59,
+            "bounds": {
+              "origin": {
+                "x": 1225.0,
+                "y": 2220.0
+              },
+              "size": {
+                "x": 460.0,
+                "y": 210.0
+              }
+            }
+          },
+          {
+            "concept_id": 60,
+            "bounds": {
+              "origin": {
+                "x": 1225.0,
+                "y": 2480.0
+              },
+              "size": {
+                "x": 460.0,
+                "y": 210.0
+              }
+            }
+          },
+          {
+            "concept_id": 61,
+            "bounds": {
+              "origin": {
+                "x": 0.0,
+                "y": 3300.0
+              },
+              "size": {
+                "x": 1800.0,
+                "y": 1250.0
+              }
+            }
+          },
+          {
+            "concept_id": 62,
+            "bounds": {
+              "origin": {
+                "x": 60.0,
+                "y": 3600.0
+              },
+              "size": {
+                "x": 510.0,
+                "y": 870.0
+              }
+            }
+          },
+          {
+            "concept_id": 63,
+            "bounds": {
+              "origin": {
+                "x": 85.0,
+                "y": 3870.0
+              },
+              "size": {
+                "x": 460.0,
+                "y": 210.0
+              }
+            }
+          },
+          {
+            "concept_id": 64,
+            "bounds": {
+              "origin": {
+                "x": 85.0,
+                "y": 4130.0
+              },
+              "size": {
+                "x": 460.0,
+                "y": 210.0
+              }
+            }
+          },
+          {
+            "concept_id": 65,
+            "bounds": {
+              "origin": {
+                "x": 630.0,
+                "y": 3600.0
+              },
+              "size": {
+                "x": 510.0,
+                "y": 870.0
+              }
+            }
+          },
+          {
+            "concept_id": 66,
+            "bounds": {
+              "origin": {
+                "x": 655.0,
+                "y": 3870.0
+              },
+              "size": {
+                "x": 460.0,
+                "y": 210.0
+              }
+            }
+          },
+          {
+            "concept_id": 67,
+            "bounds": {
+              "origin": {
+                "x": 655.0,
+                "y": 4130.0
+              },
+              "size": {
+                "x": 460.0,
+                "y": 210.0
+              }
+            }
+          },
+          {
+            "concept_id": 68,
+            "bounds": {
+              "origin": {
+                "x": 1200.0,
+                "y": 3600.0
+              },
+              "size": {
+                "x": 510.0,
+                "y": 870.0
+              }
+            }
+          },
+          {
+            "concept_id": 69,
+            "bounds": {
+              "origin": {
+                "x": 1225.0,
+                "y": 3870.0
+              },
+              "size": {
+                "x": 460.0,
+                "y": 210.0
+              }
+            }
+          },
+          {
+            "concept_id": 70,
+            "bounds": {
+              "origin": {
+                "x": 1225.0,
+                "y": 4130.0
+              },
+              "size": {
+                "x": 460.0,
+                "y": 210.0
+              }
+            }
+          },
+          {
+            "concept_id": 71,
+            "bounds": {
+              "origin": {
+                "x": 2200.0,
+                "y": 3300.0
+              },
+              "size": {
+                "x": 1800.0,
+                "y": 1250.0
+              }
+            }
+          },
+          {
+            "concept_id": 72,
+            "bounds": {
+              "origin": {
+                "x": 2260.0,
+                "y": 3600.0
+              },
+              "size": {
+                "x": 510.0,
+                "y": 870.0
+              }
+            }
+          },
+          {
+            "concept_id": 73,
+            "bounds": {
+              "origin": {
+                "x": 2285.0,
+                "y": 3870.0
+              },
+              "size": {
+                "x": 460.0,
+                "y": 210.0
+              }
+            }
+          },
+          {
+            "concept_id": 74,
+            "bounds": {
+              "origin": {
+                "x": 2285.0,
+                "y": 4130.0
+              },
+              "size": {
+                "x": 460.0,
+                "y": 210.0
+              }
+            }
+          },
+          {
+            "concept_id": 75,
+            "bounds": {
+              "origin": {
+                "x": 2830.0,
+                "y": 3600.0
+              },
+              "size": {
+                "x": 510.0,
+                "y": 870.0
+              }
+            }
+          },
+          {
+            "concept_id": 76,
+            "bounds": {
+              "origin": {
+                "x": 2855.0,
+                "y": 3870.0
+              },
+              "size": {
+                "x": 460.0,
+                "y": 210.0
+              }
+            }
+          },
+          {
+            "concept_id": 77,
+            "bounds": {
+              "origin": {
+                "x": 2855.0,
+                "y": 4130.0
+              },
+              "size": {
+                "x": 460.0,
+                "y": 210.0
+              }
+            }
+          },
+          {
+            "concept_id": 78,
+            "bounds": {
+              "origin": {
+                "x": 3400.0,
+                "y": 3600.0
+              },
+              "size": {
+                "x": 510.0,
+                "y": 870.0
+              }
+            }
+          },
+          {
+            "concept_id": 79,
+            "bounds": {
+              "origin": {
+                "x": 3425.0,
+                "y": 3870.0
+              },
+              "size": {
+                "x": 460.0,
+                "y": 210.0
+              }
+            }
+          },
+          {
+            "concept_id": 80,
+            "bounds": {
+              "origin": {
+                "x": 3425.0,
+                "y": 4130.0
+              },
+              "size": {
+                "x": 460.0,
+                "y": 210.0
+              }
+            }
+          },
+          {
+            "concept_id": 81,
+            "bounds": {
+              "origin": {
+                "x": 4400.0,
+                "y": 3300.0
+              },
+              "size": {
+                "x": 1800.0,
+                "y": 1250.0
+              }
+            }
+          },
+          {
+            "concept_id": 82,
+            "bounds": {
+              "origin": {
+                "x": 4460.0,
+                "y": 3600.0
+              },
+              "size": {
+                "x": 510.0,
+                "y": 870.0
+              }
+            }
+          },
+          {
+            "concept_id": 83,
+            "bounds": {
+              "origin": {
+                "x": 4485.0,
+                "y": 3870.0
+              },
+              "size": {
+                "x": 460.0,
+                "y": 210.0
+              }
+            }
+          },
+          {
+            "concept_id": 84,
+            "bounds": {
+              "origin": {
+                "x": 4485.0,
+                "y": 4130.0
+              },
+              "size": {
+                "x": 460.0,
+                "y": 210.0
+              }
+            }
+          },
+          {
+            "concept_id": 85,
+            "bounds": {
+              "origin": {
+                "x": 5030.0,
+                "y": 3600.0
+              },
+              "size": {
+                "x": 510.0,
+                "y": 870.0
+              }
+            }
+          },
+          {
+            "concept_id": 86,
+            "bounds": {
+              "origin": {
+                "x": 5055.0,
+                "y": 3870.0
+              },
+              "size": {
+                "x": 460.0,
+                "y": 210.0
+              }
+            }
+          },
+          {
+            "concept_id": 87,
+            "bounds": {
+              "origin": {
+                "x": 5055.0,
+                "y": 4130.0
+              },
+              "size": {
+                "x": 460.0,
+                "y": 210.0
+              }
+            }
+          },
+          {
+            "concept_id": 88,
+            "bounds": {
+              "origin": {
+                "x": 5600.0,
+                "y": 3600.0
+              },
+              "size": {
+                "x": 510.0,
+                "y": 870.0
+              }
+            }
+          },
+          {
+            "concept_id": 89,
+            "bounds": {
+              "origin": {
+                "x": 5625.0,
+                "y": 3870.0
+              },
+              "size": {
+                "x": 460.0,
+                "y": 210.0
+              }
+            }
+          },
+          {
+            "concept_id": 90,
+            "bounds": {
+              "origin": {
+                "x": 5625.0,
+                "y": 4130.0
+              },
+              "size": {
+                "x": 460.0,
+                "y": 210.0
+              }
+            }
+          }
+        ],
+        "visual_boundaries": [
+          {
+            "id": "boundary-external-upstream-mines-suppliers-carriers",
+            "title": "External upstream — mines, suppliers & carriers",
+            "summary": "Material flows into the company across this boundary.",
+            "bounds": {
+              "origin": {
+                "x": -100.0,
+                "y": -170.0
+              },
+              "size": {
+                "x": 6400.0,
+                "y": 1520.0
+              }
+            }
+          },
+          {
+            "id": "boundary-vehicle-manufacturer-receiving-through-test",
+            "title": "Vehicle manufacturer — receiving through test",
+            "summary": "Receiving, body and paint; final assembly continues in the next row.",
+            "bounds": {
+              "origin": {
+                "x": -100.0,
+                "y": 1480.0
+              },
+              "size": {
+                "x": 6400.0,
+                "y": 1520.0
+              }
+            }
+          },
+          {
+            "id": "boundary-vehicle-manufacturer-final-assembly",
+            "title": "Vehicle manufacturer — final assembly",
+            "summary": "Company production continues here; follow delivers arrows.",
+            "bounds": {
+              "origin": {
+                "x": -100.0,
+                "y": 3130.0
+              },
+              "size": {
+                "x": 2000.0,
+                "y": 1520.0
+              }
+            }
+          },
+          {
+            "id": "boundary-distribution-warehouse-carriers",
+            "title": "Distribution — warehouse & carriers",
+            "summary": "Finished goods queue plus outbound transport.",
+            "bounds": {
+              "origin": {
+                "x": 2100.0,
+                "y": 3130.0
+              },
+              "size": {
+                "x": 2000.0,
+                "y": 1520.0
+              }
+            }
+          },
+          {
+            "id": "boundary-external-downstream-dealer-demand",
+            "title": "External downstream — dealer & demand",
+            "summary": "Customer demand generates upstream information flow.",
+            "bounds": {
+              "origin": {
+                "x": 4300.0,
+                "y": 3130.0
+              },
+              "size": {
+                "x": 2000.0,
+                "y": 1520.0
+              }
+            }
+          }
+        ],
+        "semantic_zoom_layers": [
+          {
+            "id": "layer-overview-zoom-into-a-stage",
+            "title": "Overview — zoom into a stage",
+            "percent_settings": {
+              "active_zoom_range": {
+                "start_percent": 1.0,
+                "end_percent": 24.0
+              },
+              "fade_percent": 2.0
+            },
+            "card_scale": 1.0
+          },
+          {
+            "id": "layer-process-follow-the-flow",
+            "title": "Process — follow the flow",
+            "percent_settings": {
+              "active_zoom_range": {
+                "start_percent": 24.0,
+                "end_percent": 85.0
+              },
+              "fade_percent": 2.0
+            },
+            "card_scale": 1.0
+          },
+          {
+            "id": "layer-detail-inspect-the-work",
+            "title": "Detail — inspect the work",
+            "percent_settings": {
+              "active_zoom_range": {
+                "start_percent": 85.0,
+                "end_percent": 409600.0
+              },
+              "fade_percent": 2.0
+            },
+            "card_scale": 1.0
+          }
+        ],
+        "semantic_zoom_card_modes": [
+          {
+            "concept_id": 1,
+            "mode": {
+              "manual": {
+                "layer_ids": [
+                  "layer-overview-zoom-into-a-stage",
+                  "layer-process-follow-the-flow",
+                  "layer-detail-inspect-the-work"
+                ]
+              }
+            }
+          },
+          {
+            "concept_id": 2,
+            "mode": {
+              "manual": {
+                "layer_ids": [
+                  "layer-process-follow-the-flow",
+                  "layer-detail-inspect-the-work"
+                ]
+              }
+            }
+          },
+          {
+            "concept_id": 3,
+            "mode": {
+              "manual": {
+                "layer_ids": [
+                  "layer-detail-inspect-the-work"
+                ]
+              }
+            }
+          },
+          {
+            "concept_id": 4,
+            "mode": {
+              "manual": {
+                "layer_ids": [
+                  "layer-detail-inspect-the-work"
+                ]
+              }
+            }
+          },
+          {
+            "concept_id": 5,
+            "mode": {
+              "manual": {
+                "layer_ids": [
+                  "layer-process-follow-the-flow",
+                  "layer-detail-inspect-the-work"
+                ]
+              }
+            }
+          },
+          {
+            "concept_id": 6,
+            "mode": {
+              "manual": {
+                "layer_ids": [
+                  "layer-detail-inspect-the-work"
+                ]
+              }
+            }
+          },
+          {
+            "concept_id": 7,
+            "mode": {
+              "manual": {
+                "layer_ids": [
+                  "layer-detail-inspect-the-work"
+                ]
+              }
+            }
+          },
+          {
+            "concept_id": 8,
+            "mode": {
+              "manual": {
+                "layer_ids": [
+                  "layer-process-follow-the-flow",
+                  "layer-detail-inspect-the-work"
+                ]
+              }
+            }
+          },
+          {
+            "concept_id": 9,
+            "mode": {
+              "manual": {
+                "layer_ids": [
+                  "layer-detail-inspect-the-work"
+                ]
+              }
+            }
+          },
+          {
+            "concept_id": 10,
+            "mode": {
+              "manual": {
+                "layer_ids": [
+                  "layer-detail-inspect-the-work"
+                ]
+              }
+            }
+          },
+          {
+            "concept_id": 11,
+            "mode": {
+              "manual": {
+                "layer_ids": [
+                  "layer-overview-zoom-into-a-stage",
+                  "layer-process-follow-the-flow",
+                  "layer-detail-inspect-the-work"
+                ]
+              }
+            }
+          },
+          {
+            "concept_id": 12,
+            "mode": {
+              "manual": {
+                "layer_ids": [
+                  "layer-process-follow-the-flow",
+                  "layer-detail-inspect-the-work"
+                ]
+              }
+            }
+          },
+          {
+            "concept_id": 13,
+            "mode": {
+              "manual": {
+                "layer_ids": [
+                  "layer-detail-inspect-the-work"
+                ]
+              }
+            }
+          },
+          {
+            "concept_id": 14,
+            "mode": {
+              "manual": {
+                "layer_ids": [
+                  "layer-detail-inspect-the-work"
+                ]
+              }
+            }
+          },
+          {
+            "concept_id": 15,
+            "mode": {
+              "manual": {
+                "layer_ids": [
+                  "layer-process-follow-the-flow",
+                  "layer-detail-inspect-the-work"
+                ]
+              }
+            }
+          },
+          {
+            "concept_id": 16,
+            "mode": {
+              "manual": {
+                "layer_ids": [
+                  "layer-detail-inspect-the-work"
+                ]
+              }
+            }
+          },
+          {
+            "concept_id": 17,
+            "mode": {
+              "manual": {
+                "layer_ids": [
+                  "layer-detail-inspect-the-work"
+                ]
+              }
+            }
+          },
+          {
+            "concept_id": 18,
+            "mode": {
+              "manual": {
+                "layer_ids": [
+                  "layer-process-follow-the-flow",
+                  "layer-detail-inspect-the-work"
+                ]
+              }
+            }
+          },
+          {
+            "concept_id": 19,
+            "mode": {
+              "manual": {
+                "layer_ids": [
+                  "layer-detail-inspect-the-work"
+                ]
+              }
+            }
+          },
+          {
+            "concept_id": 20,
+            "mode": {
+              "manual": {
+                "layer_ids": [
+                  "layer-detail-inspect-the-work"
+                ]
+              }
+            }
+          },
+          {
+            "concept_id": 21,
+            "mode": {
+              "manual": {
+                "layer_ids": [
+                  "layer-overview-zoom-into-a-stage",
+                  "layer-process-follow-the-flow",
+                  "layer-detail-inspect-the-work"
+                ]
+              }
+            }
+          },
+          {
+            "concept_id": 22,
+            "mode": {
+              "manual": {
+                "layer_ids": [
+                  "layer-process-follow-the-flow",
+                  "layer-detail-inspect-the-work"
+                ]
+              }
+            }
+          },
+          {
+            "concept_id": 23,
+            "mode": {
+              "manual": {
+                "layer_ids": [
+                  "layer-detail-inspect-the-work"
+                ]
+              }
+            }
+          },
+          {
+            "concept_id": 24,
+            "mode": {
+              "manual": {
+                "layer_ids": [
+                  "layer-detail-inspect-the-work"
+                ]
+              }
+            }
+          },
+          {
+            "concept_id": 25,
+            "mode": {
+              "manual": {
+                "layer_ids": [
+                  "layer-process-follow-the-flow",
+                  "layer-detail-inspect-the-work"
+                ]
+              }
+            }
+          },
+          {
+            "concept_id": 26,
+            "mode": {
+              "manual": {
+                "layer_ids": [
+                  "layer-detail-inspect-the-work"
+                ]
+              }
+            }
+          },
+          {
+            "concept_id": 27,
+            "mode": {
+              "manual": {
+                "layer_ids": [
+                  "layer-detail-inspect-the-work"
+                ]
+              }
+            }
+          },
+          {
+            "concept_id": 28,
+            "mode": {
+              "manual": {
+                "layer_ids": [
+                  "layer-process-follow-the-flow",
+                  "layer-detail-inspect-the-work"
+                ]
+              }
+            }
+          },
+          {
+            "concept_id": 29,
+            "mode": {
+              "manual": {
+                "layer_ids": [
+                  "layer-detail-inspect-the-work"
+                ]
+              }
+            }
+          },
+          {
+            "concept_id": 30,
+            "mode": {
+              "manual": {
+                "layer_ids": [
+                  "layer-detail-inspect-the-work"
+                ]
+              }
+            }
+          },
+          {
+            "concept_id": 31,
+            "mode": {
+              "manual": {
+                "layer_ids": [
+                  "layer-overview-zoom-into-a-stage",
+                  "layer-process-follow-the-flow",
+                  "layer-detail-inspect-the-work"
+                ]
+              }
+            }
+          },
+          {
+            "concept_id": 32,
+            "mode": {
+              "manual": {
+                "layer_ids": [
+                  "layer-process-follow-the-flow",
+                  "layer-detail-inspect-the-work"
+                ]
+              }
+            }
+          },
+          {
+            "concept_id": 33,
+            "mode": {
+              "manual": {
+                "layer_ids": [
+                  "layer-detail-inspect-the-work"
+                ]
+              }
+            }
+          },
+          {
+            "concept_id": 34,
+            "mode": {
+              "manual": {
+                "layer_ids": [
+                  "layer-detail-inspect-the-work"
+                ]
+              }
+            }
+          },
+          {
+            "concept_id": 35,
+            "mode": {
+              "manual": {
+                "layer_ids": [
+                  "layer-process-follow-the-flow",
+                  "layer-detail-inspect-the-work"
+                ]
+              }
+            }
+          },
+          {
+            "concept_id": 36,
+            "mode": {
+              "manual": {
+                "layer_ids": [
+                  "layer-detail-inspect-the-work"
+                ]
+              }
+            }
+          },
+          {
+            "concept_id": 37,
+            "mode": {
+              "manual": {
+                "layer_ids": [
+                  "layer-detail-inspect-the-work"
+                ]
+              }
+            }
+          },
+          {
+            "concept_id": 38,
+            "mode": {
+              "manual": {
+                "layer_ids": [
+                  "layer-process-follow-the-flow",
+                  "layer-detail-inspect-the-work"
+                ]
+              }
+            }
+          },
+          {
+            "concept_id": 39,
+            "mode": {
+              "manual": {
+                "layer_ids": [
+                  "layer-detail-inspect-the-work"
+                ]
+              }
+            }
+          },
+          {
+            "concept_id": 40,
+            "mode": {
+              "manual": {
+                "layer_ids": [
+                  "layer-detail-inspect-the-work"
+                ]
+              }
+            }
+          },
+          {
+            "concept_id": 41,
+            "mode": {
+              "manual": {
+                "layer_ids": [
+                  "layer-overview-zoom-into-a-stage",
+                  "layer-process-follow-the-flow",
+                  "layer-detail-inspect-the-work"
+                ]
+              }
+            }
+          },
+          {
+            "concept_id": 42,
+            "mode": {
+              "manual": {
+                "layer_ids": [
+                  "layer-process-follow-the-flow",
+                  "layer-detail-inspect-the-work"
+                ]
+              }
+            }
+          },
+          {
+            "concept_id": 43,
+            "mode": {
+              "manual": {
+                "layer_ids": [
+                  "layer-detail-inspect-the-work"
+                ]
+              }
+            }
+          },
+          {
+            "concept_id": 44,
+            "mode": {
+              "manual": {
+                "layer_ids": [
+                  "layer-detail-inspect-the-work"
+                ]
+              }
+            }
+          },
+          {
+            "concept_id": 45,
+            "mode": {
+              "manual": {
+                "layer_ids": [
+                  "layer-process-follow-the-flow",
+                  "layer-detail-inspect-the-work"
+                ]
+              }
+            }
+          },
+          {
+            "concept_id": 46,
+            "mode": {
+              "manual": {
+                "layer_ids": [
+                  "layer-detail-inspect-the-work"
+                ]
+              }
+            }
+          },
+          {
+            "concept_id": 47,
+            "mode": {
+              "manual": {
+                "layer_ids": [
+                  "layer-detail-inspect-the-work"
+                ]
+              }
+            }
+          },
+          {
+            "concept_id": 48,
+            "mode": {
+              "manual": {
+                "layer_ids": [
+                  "layer-process-follow-the-flow",
+                  "layer-detail-inspect-the-work"
+                ]
+              }
+            }
+          },
+          {
+            "concept_id": 49,
+            "mode": {
+              "manual": {
+                "layer_ids": [
+                  "layer-detail-inspect-the-work"
+                ]
+              }
+            }
+          },
+          {
+            "concept_id": 50,
+            "mode": {
+              "manual": {
+                "layer_ids": [
+                  "layer-detail-inspect-the-work"
+                ]
+              }
+            }
+          },
+          {
+            "concept_id": 51,
+            "mode": {
+              "manual": {
+                "layer_ids": [
+                  "layer-overview-zoom-into-a-stage",
+                  "layer-process-follow-the-flow",
+                  "layer-detail-inspect-the-work"
+                ]
+              }
+            }
+          },
+          {
+            "concept_id": 52,
+            "mode": {
+              "manual": {
+                "layer_ids": [
+                  "layer-process-follow-the-flow",
+                  "layer-detail-inspect-the-work"
+                ]
+              }
+            }
+          },
+          {
+            "concept_id": 53,
+            "mode": {
+              "manual": {
+                "layer_ids": [
+                  "layer-detail-inspect-the-work"
+                ]
+              }
+            }
+          },
+          {
+            "concept_id": 54,
+            "mode": {
+              "manual": {
+                "layer_ids": [
+                  "layer-detail-inspect-the-work"
+                ]
+              }
+            }
+          },
+          {
+            "concept_id": 55,
+            "mode": {
+              "manual": {
+                "layer_ids": [
+                  "layer-process-follow-the-flow",
+                  "layer-detail-inspect-the-work"
+                ]
+              }
+            }
+          },
+          {
+            "concept_id": 56,
+            "mode": {
+              "manual": {
+                "layer_ids": [
+                  "layer-detail-inspect-the-work"
+                ]
+              }
+            }
+          },
+          {
+            "concept_id": 57,
+            "mode": {
+              "manual": {
+                "layer_ids": [
+                  "layer-detail-inspect-the-work"
+                ]
+              }
+            }
+          },
+          {
+            "concept_id": 58,
+            "mode": {
+              "manual": {
+                "layer_ids": [
+                  "layer-process-follow-the-flow",
+                  "layer-detail-inspect-the-work"
+                ]
+              }
+            }
+          },
+          {
+            "concept_id": 59,
+            "mode": {
+              "manual": {
+                "layer_ids": [
+                  "layer-detail-inspect-the-work"
+                ]
+              }
+            }
+          },
+          {
+            "concept_id": 60,
+            "mode": {
+              "manual": {
+                "layer_ids": [
+                  "layer-detail-inspect-the-work"
+                ]
+              }
+            }
+          },
+          {
+            "concept_id": 61,
+            "mode": {
+              "manual": {
+                "layer_ids": [
+                  "layer-overview-zoom-into-a-stage",
+                  "layer-process-follow-the-flow",
+                  "layer-detail-inspect-the-work"
+                ]
+              }
+            }
+          },
+          {
+            "concept_id": 62,
+            "mode": {
+              "manual": {
+                "layer_ids": [
+                  "layer-process-follow-the-flow",
+                  "layer-detail-inspect-the-work"
+                ]
+              }
+            }
+          },
+          {
+            "concept_id": 63,
+            "mode": {
+              "manual": {
+                "layer_ids": [
+                  "layer-detail-inspect-the-work"
+                ]
+              }
+            }
+          },
+          {
+            "concept_id": 64,
+            "mode": {
+              "manual": {
+                "layer_ids": [
+                  "layer-detail-inspect-the-work"
+                ]
+              }
+            }
+          },
+          {
+            "concept_id": 65,
+            "mode": {
+              "manual": {
+                "layer_ids": [
+                  "layer-process-follow-the-flow",
+                  "layer-detail-inspect-the-work"
+                ]
+              }
+            }
+          },
+          {
+            "concept_id": 66,
+            "mode": {
+              "manual": {
+                "layer_ids": [
+                  "layer-detail-inspect-the-work"
+                ]
+              }
+            }
+          },
+          {
+            "concept_id": 67,
+            "mode": {
+              "manual": {
+                "layer_ids": [
+                  "layer-detail-inspect-the-work"
+                ]
+              }
+            }
+          },
+          {
+            "concept_id": 68,
+            "mode": {
+              "manual": {
+                "layer_ids": [
+                  "layer-process-follow-the-flow",
+                  "layer-detail-inspect-the-work"
+                ]
+              }
+            }
+          },
+          {
+            "concept_id": 69,
+            "mode": {
+              "manual": {
+                "layer_ids": [
+                  "layer-detail-inspect-the-work"
+                ]
+              }
+            }
+          },
+          {
+            "concept_id": 70,
+            "mode": {
+              "manual": {
+                "layer_ids": [
+                  "layer-detail-inspect-the-work"
+                ]
+              }
+            }
+          },
+          {
+            "concept_id": 71,
+            "mode": {
+              "manual": {
+                "layer_ids": [
+                  "layer-overview-zoom-into-a-stage",
+                  "layer-process-follow-the-flow",
+                  "layer-detail-inspect-the-work"
+                ]
+              }
+            }
+          },
+          {
+            "concept_id": 72,
+            "mode": {
+              "manual": {
+                "layer_ids": [
+                  "layer-process-follow-the-flow",
+                  "layer-detail-inspect-the-work"
+                ]
+              }
+            }
+          },
+          {
+            "concept_id": 73,
+            "mode": {
+              "manual": {
+                "layer_ids": [
+                  "layer-detail-inspect-the-work"
+                ]
+              }
+            }
+          },
+          {
+            "concept_id": 74,
+            "mode": {
+              "manual": {
+                "layer_ids": [
+                  "layer-detail-inspect-the-work"
+                ]
+              }
+            }
+          },
+          {
+            "concept_id": 75,
+            "mode": {
+              "manual": {
+                "layer_ids": [
+                  "layer-process-follow-the-flow",
+                  "layer-detail-inspect-the-work"
+                ]
+              }
+            }
+          },
+          {
+            "concept_id": 76,
+            "mode": {
+              "manual": {
+                "layer_ids": [
+                  "layer-detail-inspect-the-work"
+                ]
+              }
+            }
+          },
+          {
+            "concept_id": 77,
+            "mode": {
+              "manual": {
+                "layer_ids": [
+                  "layer-detail-inspect-the-work"
+                ]
+              }
+            }
+          },
+          {
+            "concept_id": 78,
+            "mode": {
+              "manual": {
+                "layer_ids": [
+                  "layer-process-follow-the-flow",
+                  "layer-detail-inspect-the-work"
+                ]
+              }
+            }
+          },
+          {
+            "concept_id": 79,
+            "mode": {
+              "manual": {
+                "layer_ids": [
+                  "layer-detail-inspect-the-work"
+                ]
+              }
+            }
+          },
+          {
+            "concept_id": 80,
+            "mode": {
+              "manual": {
+                "layer_ids": [
+                  "layer-detail-inspect-the-work"
+                ]
+              }
+            }
+          },
+          {
+            "concept_id": 81,
+            "mode": {
+              "manual": {
+                "layer_ids": [
+                  "layer-overview-zoom-into-a-stage",
+                  "layer-process-follow-the-flow",
+                  "layer-detail-inspect-the-work"
+                ]
+              }
+            }
+          },
+          {
+            "concept_id": 82,
+            "mode": {
+              "manual": {
+                "layer_ids": [
+                  "layer-process-follow-the-flow",
+                  "layer-detail-inspect-the-work"
+                ]
+              }
+            }
+          },
+          {
+            "concept_id": 83,
+            "mode": {
+              "manual": {
+                "layer_ids": [
+                  "layer-detail-inspect-the-work"
+                ]
+              }
+            }
+          },
+          {
+            "concept_id": 84,
+            "mode": {
+              "manual": {
+                "layer_ids": [
+                  "layer-detail-inspect-the-work"
+                ]
+              }
+            }
+          },
+          {
+            "concept_id": 85,
+            "mode": {
+              "manual": {
+                "layer_ids": [
+                  "layer-process-follow-the-flow",
+                  "layer-detail-inspect-the-work"
+                ]
+              }
+            }
+          },
+          {
+            "concept_id": 86,
+            "mode": {
+              "manual": {
+                "layer_ids": [
+                  "layer-detail-inspect-the-work"
+                ]
+              }
+            }
+          },
+          {
+            "concept_id": 87,
+            "mode": {
+              "manual": {
+                "layer_ids": [
+                  "layer-detail-inspect-the-work"
+                ]
+              }
+            }
+          },
+          {
+            "concept_id": 88,
+            "mode": {
+              "manual": {
+                "layer_ids": [
+                  "layer-process-follow-the-flow",
+                  "layer-detail-inspect-the-work"
+                ]
+              }
+            }
+          },
+          {
+            "concept_id": 89,
+            "mode": {
+              "manual": {
+                "layer_ids": [
+                  "layer-detail-inspect-the-work"
+                ]
+              }
+            }
+          },
+          {
+            "concept_id": 90,
+            "mode": {
+              "manual": {
+                "layer_ids": [
+                  "layer-detail-inspect-the-work"
+                ]
+              }
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "planning_scenarios": []
+}

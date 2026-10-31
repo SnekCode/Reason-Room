@@ -86,7 +86,7 @@
         try {
           const file = await watched.fileHandle.getFile();
           source = await file.text();
-          if (source === watched.source || source === watched.rejectedSource) {
+          if (watchedWorkspace !== watched || source === watched.source || source === watched.rejectedSource) {
             return;
           }
           if (application.refresh_local_workspace(source, file.name)) {
@@ -118,6 +118,7 @@
         localWorkspaceFile.click();
       }
 
+      window.infiniteNoteCanvasStopWatchingWorkspace = stopWatchingWorkspace;
       window.infiniteNoteCanvasOpenWorkspace = openStandardWorkspace;
 
       window.infiniteNoteCanvasOpenWatchedWorkspace = () => {

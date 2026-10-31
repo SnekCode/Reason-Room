@@ -2,7 +2,7 @@ use std::{env, fs, process::ExitCode};
 
 use infinite_note_canvas_canvas::WorkspaceDocument;
 
-const DEFAULT_WORKSPACE_PATH: &str = "workspaces/acme.infinite-note.json";
+const DEFAULT_WORKSPACE_PATH: &str = "workspaces/static-react-website.infinite-note.json";
 
 fn main() -> ExitCode {
     let mut arguments = env::args().skip(1);
