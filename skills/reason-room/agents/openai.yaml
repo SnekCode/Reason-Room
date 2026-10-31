@@ -1,0 +1,4 @@
+interface:
+  display_name: "Reason Room"
+  short_description: "Inspect and edit Reason Room canvases through MCP"
+  default_prompt: "Use $reason-room to inspect my connected canvas and make the requested changes."

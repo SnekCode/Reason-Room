@@ -30,12 +30,26 @@ local files without network services.
 
 Sources: [PhotoCraft MCP command](https://github.com/storytold/photocraft/blob/952c328b3d849eaa110cff9c7ab9977389590ccc/apps/photocraft-cli/src/automation.rs) and [its automation arguments](https://github.com/storytold/photocraft/blob/952c328b3d849eaa110cff9c7ab9977389590ccc/apps/photocraft-cli/src/args.rs).
 
+## Installable Agent Skill
+
+The portable [Reason Room skill](../../skills/reason-room/SKILL.md) teaches an
+agent how to select context, inspect a map, and verify requested MCP edits.
+Its [tool reference](../../skills/reason-room/references/mcp-contract.md)
+covers all six tools and all 18 typed change kinds. Its
+[setup guide](../../skills/reason-room/references/setup.md) covers skill
+installation and separate MCP configuration for Codex and other MCP clients.
+
+The skill folder is `skills/reason-room/`. Copy the complete folder into the
+client's skill directory, or ask a compatible skill installer to install that
+path from `https://github.com/SnekCode/Reason-Room`. Installing the skill does
+not build the CLI, select a workspace, or enable write access.
+
 ## Start an MCP Server
 
 Build the agent CLI:
 
 ```sh
-cargo build --release -p infinite-note-canvas-cli
+cargo build --locked --release --package infinite-note-canvas-cli
 ```
 
 Configure an MCP client with an absolute CLI path and an absolute workspace
@@ -44,7 +58,7 @@ path. This example gives the agent read and write access to only one file.
 ```json
 {
   "mcpServers": {
-    "infinite-note-canvas": {
+    "reason_room": {
       "command": "/absolute/path/to/target/release/infinite-note-canvas-cli",
       "args": [
         "mcp",
@@ -70,7 +84,7 @@ For Codex, add this table to `~/.codex/config.toml` or to a project-scoped
 `.codex/config.toml`:
 
 ```toml
-[mcp_servers.infinite_note_canvas]
+[mcp_servers.reason_room]
 command = "/absolute/path/to/target/release/infinite-note-canvas-cli"
 args = [
   "mcp",
@@ -114,8 +128,23 @@ saved workspace digest after every successful change.
 The server opens and validates the workspace for each tool call. This avoids
 using a stale in-memory document after another local process changes the file.
 
-## Current Limitation
+## Refresh and Editing Boundaries
 
-The desktop app does not yet reload a workspace that an agent changes. Do not
-edit the same workspace in the desktop app while an agent has write access.
-Close and reopen the desktop app after the agent finishes its changes.
+The desktop app polls its open workspace for external changes and defers
+refresh while a dialog, gesture, or editor draft is active. It can display
+agent changes after editing becomes idle. Avoid concurrent human and agent
+authoring: per-call file reload and save verification are not a shared lock or
+a multi-operation transaction.
+
+The browser's ordinary Open action imports a separate copy. For external file
+updates, use its live-refresh connection where supported, or explicitly import
+the saved JSON again. Changing a desktop JSON file does not automatically
+update a hosted browser canvas.
+
+A server for a missing path initially advertises only `create_workspace`.
+After creation, refresh tool discovery. Clients that cache discovery may need
+to reconnect because this server does not emit a tool-list change notification.
+
+MCP has no UI controls, undo/redo, automatic layout, version/Lens creation, or
+custom-type creation tools. A multi-step edit can succeed in part; report saved
+changes and any failure accurately rather than implying an automatic rollback.

@@ -18,6 +18,7 @@ change before a stable release. Keep a separate copy of important workspaces.
   different levels of detail.
 - Undo and redo workspace edits during the current session.
 - Inspect local workspaces with the optional command-line interface.
+- Connect an agent through local MCP tools and the installable Reason Room skill.
 - Run the same canvas in a local WebAssembly browser build.
 
 ## Installation
@@ -104,6 +105,19 @@ These checks reduce the chance of accidental loss. They do not replace normal
 backups or version control. The application does not encrypt workspace files.
 Do not store data in a workspace unless local-file and browser-storage access
 on the device are acceptable for that data.
+
+## Agent Skill and MCP
+
+The [Reason Room skill](skills/reason-room/SKILL.md) gives a skill-capable agent
+a workflow for reading and editing canvases through the local MCP server.
+It covers six tools and 18 typed changes, including cards, relationships,
+visual boundaries, and semantic zoom layers.
+
+Install the complete `skills/reason-room/` folder into your agent's skill
+directory. Follow the [skill setup guide](skills/reason-room/references/setup.md)
+to build the CLI, connect one explicitly selected workspace, and choose
+read-only or write-enabled access. Then ask your agent to use `$reason-room`.
+The skill and MCP connection are separate installations.
 
 ## Compatibility During Rebranding
 
