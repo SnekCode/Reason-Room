@@ -117,8 +117,10 @@ Attempted native evaluation through `./start.sh` with an external temporary copy
 of the manufacturing workspace. The launcher reused an already-running app and
 explicitly reported that it retained its earlier executable image. Native UI
 interaction was unavailable because Computer Use approval was denied, so the
-rebuilt app's visual behavior was not manually verified. Browser and other
-platform interaction checks were not performed for this change.
+rebuilt app's visual behavior was not manually verified by the agent. The user
+subsequently confirmed that the relationship-click bug was fixed in manual
+evaluation. Browser and other platform interaction checks were not performed
+for this change.
 
 ## Remaining Evidence and Known Limits
 
