@@ -99,6 +99,27 @@ above the Stamping / Body welding / Body buffer cards at neighboring 42% and
 41–43%. No workspace format change is needed;
 routes are derived in memory rather than saved into workspace JSON.
 
+## Relationship Selection Inside Cards — 2026-11-01
+
+Relationship hit testing now follows the paint order: visible relationship paths
+receive hover, primary clicks and context menus over card surfaces. Card resize
+handles and relationship creation ports retain primary-pointer priority. Card
+surfaces away from lines remain interactive.
+
+On Apple Silicon macOS with Rust 1.97.1, formatting, all workspace tests, the
+workspace build and strict Clippy passed. A deterministic regression uses the
+manufacturing example to find a painted relationship inside an interactive card,
+checks hover and context-menu targeting, and feeds an egui primary-pointer event
+to verify relationship selection without a card move gesture. It also checks
+card targeting away from the line.
+
+Attempted native evaluation through `./start.sh` with an external temporary copy
+of the manufacturing workspace. The launcher reused an already-running app and
+explicitly reported that it retained its earlier executable image. Native UI
+interaction was unavailable because Computer Use approval was denied, so the
+rebuilt app's visual behavior was not manually verified. Browser and other
+platform interaction checks were not performed for this change.
+
 ## Remaining Evidence and Known Limits
 
 - Browser `localStorage` failures are not fully handled. Test blocked storage,

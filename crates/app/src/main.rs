@@ -4496,17 +4496,11 @@ impl InfiniteNoteCanvasApp {
         viewport: Rect,
         viewport_size: Point,
     ) -> CanvasContextMenuTarget {
+        if let Some(relationship_id) = self.canvas_relationship_at(screen_position, viewport) {
+            return CanvasContextMenuTarget::Relationship(relationship_id);
+        }
         if let Some(concept_id) = self.filtered_canvas_hit_test(world_position) {
             return CanvasContextMenuTarget::Card(concept_id);
-        }
-        let displayed_card_bounds_by_concept_id = self.displayed_card_bounds_in_viewport(viewport);
-        if let Some(relationship_id) = relationship_path_at_outside_cards(
-            &self.visible_relationship_paths(viewport),
-            screen_position,
-            7.0,
-            &displayed_card_bounds_by_concept_id,
-        ) {
-            return CanvasContextMenuTarget::Relationship(relationship_id);
         }
         if let Some(target) = boundary_pointer_target(
             &self.interactive_visual_boundaries(viewport_size),
@@ -4810,24 +4804,13 @@ impl InfiniteNoteCanvasApp {
             .collect()
     }
 
-    fn displayed_card_bounds_in_viewport(&self, viewport: Rect) -> BTreeMap<u32, CanvasRect> {
-        let camera = self.interaction.camera();
-        let visible_world =
-            camera.visible_world_rect(Point::new(viewport.width(), viewport.height()));
-        let visible_card_count = self.dataset.visible_cards(visible_world).count();
-        let visible_cards: Vec<_> = self
-            .dataset
-            .visible_cards(visible_world)
-            .filter(|card| self.canvas_card_matches_type_filter(card))
-            .take(rendered_card_count(visible_card_count, MAX_RENDERED_CARDS))
-            .collect();
-        let selected_card_ids = self.interaction.selected_card_ids().collect();
-        painted_card_bounds_by_concept_id(
-            &visible_cards,
-            camera,
-            viewport,
-            &selected_card_ids,
-            self.gesture.as_ref(),
+    fn canvas_relationship_at(&self, screen_position: Pos2, viewport: Rect) -> Option<String> {
+        // Relationships paint over card surfaces, including enclosing cards.
+        // Match that order for hover, selection, and context menus.
+        relationship_path_at(
+            &self.visible_relationship_paths(viewport),
+            screen_position,
+            7.0,
         )
     }
 
@@ -4856,17 +4839,11 @@ impl InfiniteNoteCanvasApp {
         {
             return Some(CanvasHoverTarget::RelationshipPort { concept_id, edge });
         }
+        if let Some(relationship_id) = self.canvas_relationship_at(screen_position, viewport) {
+            return Some(CanvasHoverTarget::Relationship(relationship_id));
+        }
         if let Some(concept_id) = self.filtered_canvas_hit_test(world_position) {
             return Some(CanvasHoverTarget::Card(concept_id));
-        }
-        let displayed_card_bounds_by_concept_id = self.displayed_card_bounds_in_viewport(viewport);
-        if let Some(relationship_id) = relationship_path_at_outside_cards(
-            &self.visible_relationship_paths(viewport),
-            screen_position,
-            7.0,
-            &displayed_card_bounds_by_concept_id,
-        ) {
-            return Some(CanvasHoverTarget::Relationship(relationship_id));
         }
         boundary_pointer_target(
             &self.interactive_visual_boundaries(viewport_size),
@@ -5054,6 +5031,11 @@ impl InfiniteNoteCanvasApp {
                         source_port,
                         preview_world_position: world_position,
                     });
+                } else if let Some(relationship_id) = self.canvas_relationship_at(
+                    pointer.expect("a viewport position has a pointer position"),
+                    viewport,
+                ) {
+                    self.set_relationship_selection(Some(relationship_id));
                 } else if let Some(concept_id) = self.filtered_canvas_hit_test(world_position) {
                     let selected_concept_ids: Vec<_> = selected_card_ids.into_iter().collect();
                     let concept_ids = if input.7 {
@@ -5074,62 +5056,49 @@ impl InfiniteNoteCanvasApp {
                             .screen_to_world(viewport_position),
                         preview_world_delta: Point::default(),
                     });
-                } else {
-                    let displayed_card_bounds_by_concept_id =
-                        self.displayed_card_bounds_in_viewport(viewport);
-                    let relationship_id = relationship_path_at_outside_cards(
-                        &self.visible_relationship_paths(viewport),
-                        pointer.expect("a viewport position has a pointer position"),
-                        7.0,
-                        &displayed_card_bounds_by_concept_id,
-                    );
-                    if let Some(relationship_id) = relationship_id {
-                        self.set_relationship_selection(Some(relationship_id));
-                    } else if let Some(target) = boundary_pointer_target(
-                        &self.interactive_visual_boundaries(viewport_size),
-                        self.interaction.camera().screen_to_world(viewport_position),
-                        boundary_resize_handle_world_size(self.interaction.camera()),
-                    ) {
-                        match target {
-                            BoundaryPointerTarget::Move { boundary_id } => {
-                                self.set_boundary_selection(Some(boundary_id.clone()));
-                                self.gesture = Some(PointerGesture::Move {
-                                    item_ids: self.canvas_item_move_ids([CanvasItemId::Boundary(
-                                        boundary_id,
-                                    )]),
-                                    anchor_world_position: self
-                                        .interaction
-                                        .camera()
-                                        .screen_to_world(viewport_position),
-                                    preview_world_delta: Point::default(),
-                                });
-                            }
-                            BoundaryPointerTarget::Resize {
+                } else if let Some(target) = boundary_pointer_target(
+                    &self.interactive_visual_boundaries(viewport_size),
+                    self.interaction.camera().screen_to_world(viewport_position),
+                    boundary_resize_handle_world_size(self.interaction.camera()),
+                ) {
+                    match target {
+                        BoundaryPointerTarget::Move { boundary_id } => {
+                            self.set_boundary_selection(Some(boundary_id.clone()));
+                            self.gesture = Some(PointerGesture::Move {
+                                item_ids: self
+                                    .canvas_item_move_ids([CanvasItemId::Boundary(boundary_id)]),
+                                anchor_world_position: self
+                                    .interaction
+                                    .camera()
+                                    .screen_to_world(viewport_position),
+                                preview_world_delta: Point::default(),
+                            });
+                        }
+                        BoundaryPointerTarget::Resize {
+                            boundary_id,
+                            initial_bounds,
+                        } => {
+                            self.set_boundary_selection(Some(boundary_id.clone()));
+                            self.gesture = Some(PointerGesture::ResizeBoundary {
                                 boundary_id,
                                 initial_bounds,
-                            } => {
-                                self.set_boundary_selection(Some(boundary_id.clone()));
-                                self.gesture = Some(PointerGesture::ResizeBoundary {
-                                    boundary_id,
-                                    initial_bounds,
-                                    anchor_world_position: self
-                                        .interaction
-                                        .camera()
-                                        .screen_to_world(viewport_position),
-                                    preview_bounds: initial_bounds,
-                                });
-                            }
+                                anchor_world_position: self
+                                    .interaction
+                                    .camera()
+                                    .screen_to_world(viewport_position),
+                                preview_bounds: initial_bounds,
+                            });
                         }
-                    } else {
-                        if !input.7 {
-                            self.set_selection(None);
-                        }
-                        self.gesture = Some(PointerGesture::Selection);
-                        self.interaction.apply(
-                            &self.dataset,
-                            CanvasCommand::BeginSelection { viewport_position },
-                        );
                     }
+                } else {
+                    if !input.7 {
+                        self.set_selection(None);
+                    }
+                    self.gesture = Some(PointerGesture::Selection);
+                    self.interaction.apply(
+                        &self.dataset,
+                        CanvasCommand::BeginSelection { viewport_position },
+                    );
                 }
             }
 
@@ -9514,24 +9483,6 @@ fn relationship_path_at(
         .map(|(_, id)| id)
 }
 
-/// Relationship paths paint below cards. Keep their hit target below the same
-/// painted bounds, including cards that also act as spatial boundaries.
-fn relationship_path_at_outside_cards(
-    relationship_paths: &[RelationshipPaintPath],
-    position: Pos2,
-    hit_radius: f32,
-    displayed_card_bounds_by_concept_id: &BTreeMap<u32, CanvasRect>,
-) -> Option<String> {
-    let screen_position = Point::new(position.x, position.y);
-    if displayed_card_bounds_by_concept_id
-        .values()
-        .any(|bounds| bounds.contains_point(screen_position))
-    {
-        return None;
-    }
-    relationship_path_at(relationship_paths, position, hit_radius)
-}
-
 fn point_to_segment_distance_squared(point: Pos2, start: Pos2, end: Pos2) -> f32 {
     let segment = end - start;
     let length_squared = segment.length_sq();
@@ -10082,33 +10033,6 @@ fn card_stroke_width(selected: bool) -> f32 {
 
 fn card_paint_bounds(rect: Rect, selected: bool) -> Rect {
     card_rect_for_painting(rect).expand(card_stroke_width(selected))
-}
-
-fn painted_card_bounds_by_concept_id(
-    cards: &[&ConceptCard],
-    camera: Camera,
-    viewport: Rect,
-    selected_card_ids: &BTreeSet<u32>,
-    gesture: Option<&PointerGesture>,
-) -> BTreeMap<u32, CanvasRect> {
-    cards
-        .iter()
-        .map(|card| {
-            let rect = canvas_rect_to_screen(
-                move_preview_bounds(card.bounds, card.id, gesture),
-                camera,
-                viewport,
-            );
-            let painted_bounds = card_paint_bounds(rect, selected_card_ids.contains(&card.id));
-            (
-                card.id,
-                CanvasRect::new(
-                    Point::new(painted_bounds.left(), painted_bounds.top()),
-                    Point::new(painted_bounds.width(), painted_bounds.height()),
-                ),
-            )
-        })
-        .collect()
 }
 
 fn displayed_card_world_bounds_by_concept_id(
@@ -15462,28 +15386,112 @@ mod tests {
     }
 
     #[test]
-    fn relationship_line_hit_test_yields_to_a_painted_card_boundary() {
-        let paths = vec![RelationshipPaintPath {
-            id: "under-card".to_string(),
-            kind: RelationshipKind::DependsOn,
-            visible_segments: vec![vec![Pos2::new(0.0, 40.0), Pos2::new(200.0, 40.0)]],
-            crosses_boundary: false,
-            arrowhead: None,
-            label_position: None,
-        }];
-        let cards = BTreeMap::from([(
-            4,
-            CanvasRect::new(Point::new(60.0, 10.0), Point::new(80.0, 60.0)),
-        )]);
+    fn relationships_inside_cards_receive_hover_click_and_context_menu() {
+        let mut app = test_app();
+        let path = std::env::temp_dir().join(format!(
+            "reason-room-relationship-hit-{}.json",
+            std::process::id()
+        ));
+        let document = examples::ALL[1].document().unwrap();
+        fs::write(&path, document.to_pretty_json().unwrap()).unwrap();
+        let session = WorkspaceSession::load_default(path.clone()).unwrap();
+        app.dataset = session.dataset().clone();
+        app.workspace_state = WorkspaceState::Loaded(Box::new(session));
+        app.show_all_cards = true;
+        let viewport_size = Point::new(1600.0, 1000.0);
+        let viewport = Rect::from_min_size(Pos2::ZERO, Vec2::new(1600.0, 1000.0));
+        app.canvas_viewport_size = viewport_size;
+        app.interaction
+            .set_camera(Camera::new(Point::default(), 0.15));
+        app.refresh_display_dataset();
+        let camera = app.interaction.camera();
+        // Use a painted segment inside an interactive enclosing card, away
+        // from endpoint ports. This reproduces the card/line priority conflict.
+        let position = app
+            .visible_relationship_paths(viewport)
+            .iter()
+            .flat_map(|path| &path.visible_segments)
+            .flat_map(|segment| segment.windows(2))
+            .flat_map(|segment| {
+                (1..10).map(move |step| segment[0].lerp(segment[1], step as f32 / 10.0))
+            })
+            .find(|position| {
+                let world = camera.screen_to_world(Point::new(position.x, position.y));
+                position.y > 300.0
+                    && app.filtered_canvas_hit_test(world).is_some()
+                    && relationship_source_port_at(
+                        &app.dataset,
+                        world,
+                        relationship_port_hit_radius(camera),
+                    )
+                    .is_none()
+            })
+            .expect("manufacturing example has a relationship inside a card");
+        let world = camera.screen_to_world(Point::new(position.x, position.y));
+        let relationship_id = app.canvas_relationship_at(position, viewport).unwrap();
+        assert_eq!(
+            app.canvas_hover_target(world, position, viewport, viewport_size),
+            Some(CanvasHoverTarget::Relationship(relationship_id.clone()))
+        );
+        assert_eq!(
+            app.canvas_context_menu_target_at(world, position, viewport, viewport_size),
+            CanvasContextMenuTarget::Relationship(relationship_id.clone())
+        );
 
+        let (card_position, card_id) = (-4..=4)
+            .flat_map(|x| {
+                (-4..=4).map(move |y| position + Vec2::new(x as f32 * 10.0, y as f32 * 10.0))
+            })
+            .find_map(|position| {
+                let world = camera.screen_to_world(Point::new(position.x, position.y));
+                match app.canvas_hover_target(world, position, viewport, viewport_size) {
+                    Some(CanvasHoverTarget::Card(id)) => Some((position, id)),
+                    _ => None,
+                }
+            })
+            .expect("card surface away from the line stays interactive");
         assert_eq!(
-            relationship_path_at_outside_cards(&paths, Pos2::new(80.0, 40.0), 7.0, &cards),
-            None
+            app.canvas_context_menu_target_at(
+                camera.screen_to_world(Point::new(card_position.x, card_position.y)),
+                card_position,
+                viewport,
+                viewport_size,
+            ),
+            CanvasContextMenuTarget::Card(card_id)
         );
-        assert_eq!(
-            relationship_path_at_outside_cards(&paths, Pos2::new(30.0, 40.0), 7.0, &cards),
-            Some("under-card".to_string())
+
+        let ctx = egui::Context::default();
+        let mut output = ctx.run_ui(
+            egui::RawInput {
+                screen_rect: Some(viewport),
+                events: vec![
+                    egui::Event::PointerMoved(position),
+                    egui::Event::PointerButton {
+                        pos: position,
+                        button: PointerButton::Primary,
+                        pressed: true,
+                        modifiers: egui::Modifiers::default(),
+                    },
+                ],
+                ..Default::default()
+            },
+            |ui| {
+                let response = ui.interact(
+                    viewport,
+                    egui::Id::unique("test-canvas"),
+                    Sense::click_and_drag(),
+                );
+                app.handle_canvas_input(ui, &response, viewport, viewport_size, Rect::NOTHING);
+            },
         );
+        output.textures_delta.clear();
+        assert_eq!(app.selected_relationship_id, Some(relationship_id));
+        assert!(app.interaction.selected_card_ids().next().is_none());
+        assert!(
+            app.gesture.is_none(),
+            "a line click must not start moving the card"
+        );
+        fs::remove_file(path).unwrap();
     }
 
     #[test]
