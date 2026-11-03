@@ -324,6 +324,23 @@ browser build and documentation checks passed on the same Mac/Rust setup.
 No separate manual browser or native visual check is claimed for this compact
 layout adjustment.
 
+## Relationship Navigation Arrow Orientation — 2026-11-02
+
+Following `55d008b`, endpoint controls draw their arrows and arrange the pair
+along the existing relationship direction marker. The target button follows
+the marker and the source button points back along the opposite direction.
+The pair remains centered on the click. If the marker is outside the viewport,
+orientation follows the closest visible source-to-target route segment.
+Endpoint hover names, isolation and zoom-preserving navigation are retained.
+
+Formatting, all 341 workspace tests (174 app, 115 canvas, 5 CLI, 47 session),
+workspace build, strict Clippy, browser build and documentation checks passed
+on the same Mac/Rust setup. Direction regressions cover left, right, up, down,
+diagonal routes, a bent route whose marker differs from the clicked segment,
+and a clipped marker. Existing real-pointer checks exercise both oriented
+buttons and verify the centered popup and unchanged navigation behavior. No
+separate manual platform visual check is claimed for this orientation change.
+
 ## Remaining Evidence and Known Limits
 
 - Browser `localStorage` failures are not fully handled. Test blocked storage,

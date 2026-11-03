@@ -5250,6 +5250,12 @@ impl InfiniteNoteCanvasApp {
             self.interaction.camera(),
             viewport,
         );
+        let path = self
+            .visible_relationship_paths(viewport)
+            .into_iter()
+            .find(|path| path.id == navigation.relationship_id)?;
+        let direction = relationship_navigation_direction(&path, point)?;
+        let button_offset = relationship_navigation_button_offset(direction);
         let mut chosen = None;
         let area = egui::Area::new(egui::Id::unique("relationship-endpoint-navigation"))
             .order(egui::Order::Foreground)
@@ -5262,22 +5268,20 @@ impl InfiniteNoteCanvasApp {
                     ui.disable();
                 }
                 egui::Frame::popup(ui.style()).show(ui, |ui| {
-                    ui.horizontal(|ui| {
-                        if ui
-                            .button("←")
-                            .on_hover_text(format!("Go to {}", self.concept_label(source_id)))
-                            .clicked()
-                        {
-                            chosen = Some(true);
+                    let size = button_offset.abs() * 2.0 + Vec2::splat(30.0);
+                    let (rect, _) = ui.allocate_exact_size(size, Sense::hover());
+                    for (source, id, sign) in [(true, source_id, -1.0), (false, target_id, 1.0)] {
+                        let center = rect.center() + button_offset * sign;
+                        let response = relationship_direction_button(
+                            ui,
+                            Rect::from_center_size(center, Vec2::splat(30.0)),
+                            direction * sign,
+                            &format!("Go to {}", self.concept_label(id)),
+                        );
+                        if response.clicked() {
+                            chosen = Some(source);
                         }
-                        if ui
-                            .button("→")
-                            .on_hover_text(format!("Go to {}", self.concept_label(target_id)))
-                            .clicked()
-                        {
-                            chosen = Some(false);
-                        }
-                    });
+                    }
                 });
             });
         if let Some(source) = chosen {
@@ -9414,6 +9418,56 @@ fn canvas_and_inspector_rects(
         ),
     );
     (canvas_rect, Some(inspector_rect))
+}
+
+/// Match the line's visible direction marker. If the marker is clipped out,
+/// use the source-to-target tangent of the closest painted segment.
+fn relationship_navigation_direction(path: &RelationshipPaintPath, point: Pos2) -> Option<Vec2> {
+    if let Some([tip, left, right]) = path.arrowhead {
+        let direction = tip - left.lerp(right, 0.5);
+        if direction.length_sq() > f32::EPSILON {
+            return Some(direction.normalized());
+        }
+    }
+    path.visible_segments
+        .iter()
+        .flat_map(|points| points.windows(2))
+        .filter(|segment| segment[0].distance_sq(segment[1]) > f32::EPSILON)
+        .min_by(|left, right| {
+            point_to_segment_distance_squared(point, left[0], left[1]).total_cmp(
+                &point_to_segment_distance_squared(point, right[0], right[1]),
+            )
+        })
+        .map(|segment| (segment[1] - segment[0]).normalized())
+}
+
+/// Keep square hit targets separated even when the pair is diagonal.
+fn relationship_navigation_button_offset(direction: Vec2) -> Vec2 {
+    direction * (19.0 / direction.abs().max_elem())
+}
+
+fn relationship_direction_button(
+    ui: &mut egui::Ui,
+    rect: Rect,
+    direction: Vec2,
+    label: &str,
+) -> egui::Response {
+    let response = ui.allocate_rect(rect, Sense::click());
+    response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, ui.is_enabled(), label));
+    let visuals = ui.style().interact(&response);
+    ui.painter().rect(
+        rect,
+        4.0,
+        visuals.bg_fill,
+        visuals.bg_stroke,
+        StrokeKind::Inside,
+    );
+    ui.painter().arrow(
+        rect.center() - direction * 7.0,
+        direction * 14.0,
+        Stroke::new(1.75, visuals.text_color()),
+    );
+    response.on_hover_text(label)
 }
 
 fn connection_arrowhead_for_path(points: &[Pos2]) -> Option<[Pos2; 3]> {
@@ -17110,7 +17164,7 @@ mod tests {
 
     #[test]
     fn relationship_navigation_buttons_pan_to_each_end_without_editing_or_selecting_cards() {
-        for (source, label) in [(true, "←"), (false, "→")] {
+        for source in [true, false] {
             let (mut app, path) =
                 authored_layers_test_app(&format!("relationship-navigation-{source}"));
             app.show_all_cards = true;
@@ -17143,7 +17197,7 @@ mod tests {
                 output
             };
             render(&mut app, vec![]);
-            let output = render(&mut app, vec![]);
+            render(&mut app, vec![]);
             let navigation_rect = ctx
                 .memory(|memory| {
                     memory.area_rect(egui::Id::unique("relationship-endpoint-navigation"))
@@ -17155,7 +17209,15 @@ mod tests {
                 (navigation_rect.center() - expected).length() < 1.0,
                 "the arrow pair must be centered on the line click"
             );
-            let button = layer_test_text_position(&output, label);
+            let navigation_path = app
+                .visible_relationship_paths(viewport)
+                .into_iter()
+                .find(|path| path.id == relationship.id)
+                .unwrap();
+            let direction = relationship_navigation_direction(&navigation_path, expected).unwrap();
+            let button = navigation_rect.center()
+                + relationship_navigation_button_offset(direction)
+                    * if source { -1.0 } else { 1.0 };
             for pressed in [true, false] {
                 render(
                     &mut app,
@@ -17214,6 +17276,63 @@ mod tests {
             assert_eq!(fs::read_to_string(&path).unwrap(), before);
             fs::remove_file(path).unwrap();
         }
+    }
+
+    #[test]
+    fn navigation_arrows_match_line_markers_in_every_direction_and_fall_back_to_clicked_segment() {
+        for delta in [
+            Vec2::new(100.0, 0.0),
+            Vec2::new(-100.0, 0.0),
+            Vec2::new(0.0, 100.0),
+            Vec2::new(0.0, -100.0),
+            Vec2::new(100.0, -100.0),
+        ] {
+            let points = vec![Pos2::ZERO, Pos2::ZERO + delta];
+            let path = RelationshipPaintPath {
+                id: "direction".into(),
+                kind: RelationshipKind::DependsOn,
+                visible_segments: vec![points.clone()],
+                crosses_boundary: false,
+                arrowhead: connection_arrowhead_for_path(&points),
+                label_position: None,
+            };
+            let direction = relationship_navigation_direction(&path, Pos2::ZERO).unwrap();
+            assert!((direction - delta.normalized()).length() < 0.001);
+            let offset = relationship_navigation_button_offset(direction);
+            let source = Rect::from_center_size(Pos2::ZERO - offset, Vec2::splat(30.0));
+            let target = Rect::from_center_size(Pos2::ZERO + offset, Vec2::splat(30.0));
+            assert!(
+                !source.intersects(target),
+                "oriented button hit targets must not overlap"
+            );
+        }
+        let path = RelationshipPaintPath {
+            id: "bent".into(),
+            kind: RelationshipKind::DependsOn,
+            visible_segments: vec![vec![
+                Pos2::ZERO,
+                Pos2::new(100.0, 0.0),
+                Pos2::new(100.0, 100.0),
+            ]],
+            crosses_boundary: false,
+            arrowhead: None,
+            label_position: None,
+        };
+        assert_eq!(
+            relationship_navigation_direction(&path, Pos2::new(50.0, 0.0)),
+            Some(Vec2::X)
+        );
+        assert_eq!(
+            relationship_navigation_direction(&path, Pos2::new(100.0, 50.0)),
+            Some(Vec2::Y)
+        );
+        let mut marked = path;
+        marked.arrowhead = connection_arrowhead_for_path(&[Pos2::new(0.0, 100.0), Pos2::ZERO]);
+        assert_eq!(
+            relationship_navigation_direction(&marked, Pos2::new(50.0, 0.0)),
+            Some(-Vec2::Y),
+            "the existing line marker takes priority over a differently oriented clicked segment"
+        );
     }
 
     #[test]
