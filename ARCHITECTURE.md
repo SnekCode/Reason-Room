@@ -129,7 +129,7 @@ is not a substitute for a downloaded backup of important work.
 
 ### State Outside the Workspace
 
-The version 6 JSON document stores no camera, saved query, undo/redo history,
+The version 7 JSON document stores no camera, saved query, undo/redo history,
 or application preferences. The app keeps camera and preference state outside
 that document. CLI and MCP query arguments are requests, not saved fields.
 

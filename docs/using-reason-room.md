@@ -53,14 +53,17 @@ See [example authoring and maintenance](examples.md) for the MCP workflow.
   button drag also pans.
 - Select a card, boundary, or relationship to open its inspector.
 - Choose **Preferences** in the toolbar to change display and creation defaults.
-  The browser opens these controls within the page; desktop uses a separate window.
+  A fixed, centered dialog opens above all panels on desktop and in the browser.
+  Canvas and filter interaction is blocked until you choose Done or press Escape.
   Controls use the same dark palette as the canvas, including on systems in light mode.
 - Drag cards to arrange them. Use their resize handles to change their size.
-- Use the zoom controls to move between scales. The **View all** checkbox in
-  the canvas filter area shows every card and relationship; clear it to return
-  to layer filtering. The adjacent **O-I** checkbox rolls relationships from
-  hidden child cards up to their nearest visible spatial parent. Children fade
-  according to their own layer, and edges without a visible endpoint disappear.
+- Use the zoom controls to move between scales. The **View all** switch in
+  the canvas filter area shows every card and relationship; turn it off to
+  return to layer filtering. It is stacked with a matching **Roll up
+  relationships** switch, which defaults to On. On uses the nearest visible
+  parent for relationships whose child endpoint is hidden; Off disables that
+  fallback. Neither state changes card visibility. Visible children retain
+  their own relationship endpoints and layer fade.
 - The top-right **Built** timestamp identifies when the app was compiled, in UTC.
   It stays fixed when you reload a hosted page or reopen a local build.
 - **Undo** and **Redo** apply to workspace edits in the current session.
@@ -93,17 +96,23 @@ copy shortcut. Paste with **Edit → Paste cards**, the paste shortcut, or the
 canvas context menu. A focused text field keeps ordinary text copy and paste,
 even while a card remains selected.
 
-Pasting into another View in the same Version adds a reference to the shared
-card when it is absent there. Its content stays shared while its placement and
-layer policy belong to the destination View. Pasting into the same View, into
-a View that already contains the card, or into another Version creates a new
-card copy. Relationships are not copied.
+Pasting into another View or Version opens a popup at the pointer. Choose
+**Copy** for independent card content or **Reference** to share content edits
+with the original, including across Versions. Position, layer policy and
+relationships stay local to the destination. References use current content;
+independent copies use the content captured when copied. A View can contain
+one placement of a given reference; choose Copy if it is already present.
+Pasting within the source View creates independent copies. Relationships are
+not copied.
 
-Paste places the copied group at the canvas pointer. If that position overlaps
-an existing card, the group moves to the right until it clears the existing
-cards, including cards hidden by filters or zoom layers. This prevents a paste
-from accidentally creating spatial parent/child behavior. With the pointer
-outside the canvas, paste uses its last canvas position or the view center.
+Paste first centers the card or group on the canvas pointer. If it collides,
+it looks for the nearest clear position within half the group's width and
+height of the pointer, using an elliptical distance limit. Hidden cards still
+count as obstacles. If no nearby placement fits, a ghost follows the pointer
+with **Click to paste**. Click to confirm any chosen location, including an
+overlap, or press Escape to cancel without saving. Groups keep their relative
+arrangement. With the pointer outside the canvas, paste uses its last canvas
+position or the view center.
 
 Deleting a card removes its reference and incident relationships from the active
 View. The card's shared content and references in other Views remain available.

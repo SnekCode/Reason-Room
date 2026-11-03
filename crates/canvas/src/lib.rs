@@ -14,10 +14,10 @@ pub mod workspace;
 
 pub use interaction::{CanvasCommand, CanvasInteraction};
 pub use workspace::{
-    ConceptPlacement, CustomType, ExecutionMode, LensFilter, LensTemplate, MAXIMUM_ZOOM_PERCENT,
-    MINIMUM_ZOOM_PERCENT, NEW_CARD_BASELINE_SIZE_AT_100_PERCENT, PlanningScenario,
-    RelationshipKind, RelationshipOverlayPlacementOverrides, RelationshipOverlayTarget,
-    SelectedConceptOverlaySource, SelectedConceptRelationshipOverlay,
+    CardPasteMode, ConceptPlacement, CustomType, ExecutionMode, LensFilter, LensTemplate,
+    MAXIMUM_ZOOM_PERCENT, MINIMUM_ZOOM_PERCENT, NEW_CARD_BASELINE_SIZE_AT_100_PERCENT,
+    PlanningScenario, RelationshipKind, RelationshipOverlayPlacementOverrides,
+    RelationshipOverlayTarget, SelectedConceptOverlaySource, SelectedConceptRelationshipOverlay,
     SelectedConceptRelationshipOverlayEntry, SelectedConceptRelationshipOverlayLine,
     SelectedConceptRelationshipOverlayPath, SemanticZoomCard, SemanticZoomCardLayerMode,
     SemanticZoomCardLayerModeEntry, SemanticZoomCardLayerVisibility, SemanticZoomFrame,

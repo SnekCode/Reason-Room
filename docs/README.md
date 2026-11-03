@@ -15,7 +15,7 @@ may change before a stable release.
 
 - [Built-in examples](examples.md): walkthrough contents and MCP authoring.
 - [Architecture](../ARCHITECTURE.md): module boundaries, graph versus presentation, and persistence.
-- [Workspace format](workspace-schema.md): current version 6 JSON, validation, and migrations.
+- [Workspace format](workspace-schema.md): current version 7 JSON, validation, and migrations.
 - [MCP and agent support](product/external-agent-support.md): scoped access to local files.
 - [Installable skill](../skills/reason-room/SKILL.md) and its [setup guide](../skills/reason-room/references/setup.md).
 - [Validation status](validation.md): what has been checked and what remains unverified.

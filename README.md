@@ -147,7 +147,7 @@ bash scripts/check-active-doc-guidance.sh
 ```
 
 The CLI provides deterministic local inspection and validation. See the
-[current version 6 format](docs/workspace-schema.md) for persisted data and
+[current version 7 format](docs/workspace-schema.md) for persisted data and
 [External agent support](docs/product/external-agent-support.md) for the local
 MCP boundary.
 

@@ -977,6 +977,32 @@ impl WorkspaceSession {
         self.stage_document_mutation(document, ids)
     }
 
+    /// Stages an explicit paste choice through the normal save/history boundary.
+    pub fn stage_paste_concepts_with_mode(
+        &self,
+        source: &WorkspaceDocument,
+        source_version_id: &str,
+        source_lens_id: &str,
+        concept_ids: &[u32],
+        world_delta: Point,
+        mode: infinite_note_canvas_canvas::CardPasteMode,
+    ) -> Result<StagedWorkspaceMutation, WorkspaceStageError> {
+        let mut document = self.document().clone();
+        let ids = document
+            .paste_concepts_from_lens(
+                source,
+                source_version_id,
+                source_lens_id,
+                self.active_version_id(),
+                self.active_lens_id(),
+                concept_ids,
+                world_delta,
+                mode,
+            )
+            .map_err(WorkspaceStageError::Mutation)?;
+        self.stage_document_mutation(document, ids)
+    }
+
     /// Stages selection of a version and that version's default Lens.
     pub fn stage_select_version(
         &self,
@@ -1062,6 +1088,9 @@ impl WorkspaceSession {
         let mut document = self.document().clone();
         active_concept_mut(&mut document, self.active_version_id(), concept_id)?.summary = summary;
 
+        document
+            .synchronize_concept_content(self.active_version_id(), concept_id)
+            .map_err(WorkspaceStageError::Mutation)?;
         self.stage_document_mutation(document, self.selection_ids().to_vec())
     }
 
@@ -1074,6 +1103,9 @@ impl WorkspaceSession {
         let mut document = self.document().clone();
         active_concept_mut(&mut document, self.active_version_id(), concept_id)?.details = details;
 
+        document
+            .synchronize_concept_content(self.active_version_id(), concept_id)
+            .map_err(WorkspaceStageError::Mutation)?;
         self.stage_document_mutation(document, self.selection_ids().to_vec())
     }
 
@@ -1096,6 +1128,9 @@ impl WorkspaceSession {
             }
         }
 
+        document
+            .synchronize_concept_content(self.active_version_id(), concept_id)
+            .map_err(WorkspaceStageError::Mutation)?;
         self.stage_document_mutation(document, self.selection_ids().to_vec())
     }
 
@@ -1122,6 +1157,9 @@ impl WorkspaceSession {
         concept.details = draft.details;
         concept.attributes = draft.assertion_attributes;
 
+        document
+            .synchronize_concept_content(self.active_version_id(), draft.concept_id)
+            .map_err(WorkspaceStageError::Mutation)?;
         self.stage_document_mutation(document, self.selection_ids().to_vec())
     }
 }
@@ -1270,6 +1308,93 @@ mod tests {
         assert_eq!(
             session.dataset().card_by_id(5).unwrap().bounds,
             Rect::new(Point::new(1_080.0, 280.0), Point::new(240.0, 132.0))
+        );
+    }
+
+    #[test]
+    fn cross_version_reference_content_edits_persist_and_undo_as_one_workspace_change() {
+        let workspace = TemporaryWorkspace::new("linked-content", &sample_source());
+        let mut session = load_sample_session(workspace.path.clone());
+        let source = session.document().clone();
+        let source_version = session.active_version_id().to_string();
+        let source_lens = session.active_lens_id().to_string();
+        session
+            .commit(
+                session
+                    .stage_create_version_from_active("Destination".into())
+                    .unwrap(),
+            )
+            .unwrap();
+        let target_version = session.active_version_id().to_string();
+        let staged = session
+            .stage_paste_concepts_with_mode(
+                &source,
+                &source_version,
+                &source_lens,
+                &[5],
+                Point::new(800.0, 0.0),
+                infinite_note_canvas_canvas::CardPasteMode::Reference,
+            )
+            .unwrap();
+        let reference = staged.selection_ids()[0];
+        session.commit(staged).unwrap();
+        let linked = session.document().clone();
+        session
+            .commit(
+                session
+                    .stage_edit_concept_summary(reference, "Shared summary".into())
+                    .unwrap(),
+            )
+            .unwrap();
+        session
+            .commit(
+                session
+                    .stage_edit_concept_details(reference, "Shared details".into())
+                    .unwrap(),
+            )
+            .unwrap();
+        session
+            .commit(
+                session
+                    .stage_edit_concept_assertion(
+                        reference,
+                        AssertionMutation::Set {
+                            key: "status".into(),
+                            value: "ready".into(),
+                        },
+                    )
+                    .unwrap(),
+            )
+            .unwrap();
+        session
+            .commit(
+                session
+                    .stage_edit_concept_title(reference, "Shared title".into())
+                    .unwrap(),
+            )
+            .unwrap();
+        let edited = session.document().clone();
+        let source_card = edited.concept(&source_version, 5).unwrap();
+        assert_eq!(source_card.summary, "Shared summary");
+        assert_eq!(source_card.details, "Shared details");
+        assert_eq!(source_card.attributes["status"], "ready");
+        assert_eq!(source_card.title, "Shared title");
+        assert_eq!(
+            WorkspaceDocument::parse_json(&workspace.read_source()).unwrap(),
+            edited
+        );
+        for _ in 0..4 {
+            session.commit(session.stage_undo().unwrap()).unwrap();
+        }
+        assert_eq!(session.document(), &linked);
+        for _ in 0..4 {
+            session.commit(session.stage_redo().unwrap()).unwrap();
+        }
+        assert_eq!(session.document(), &edited);
+        assert_eq!(
+            session.document().concept(&target_version, 5).unwrap(),
+            source.concept(&source_version, 5).unwrap(),
+            "the independently cloned card must stay independent"
         );
     }
 

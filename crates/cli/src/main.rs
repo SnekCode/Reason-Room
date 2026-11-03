@@ -546,8 +546,8 @@ mod tests {
         assert_eq!(broad["contract_version"], 1);
         assert_eq!(broad["version_id"], "current");
         assert_eq!(broad["lens_id"], "semantic-zoom-evaluation");
-        assert_eq!(concept_ids(&broad), vec![10, 20]);
-        assert_eq!(relationship_ids(&broad), vec!["context-to-working"]);
+        assert_eq!(concept_ids(&broad), vec![10]);
+        assert!(relationship_ids(&broad).is_empty());
 
         let overlap: serde_json::Value = serde_json::from_str(&overlap).unwrap();
         assert_eq!(concept_ids(&overlap), vec![10, 20, 30]);
@@ -557,12 +557,11 @@ mod tests {
         );
 
         let close: serde_json::Value = serde_json::from_str(&close).unwrap();
-        assert_eq!(concept_ids(&close), vec![10, 20, 30]);
-        assert_eq!(
-            relationship_ids(&close),
-            vec!["context-to-working", "working-to-detail"]
-        );
-        let context_card = close["cards"]
+        // This legacy fixture assigns every card to ranges that have faded out
+        // by 160%. Relationships must not force those cards back into view.
+        assert!(concept_ids(&close).is_empty());
+        assert!(relationship_ids(&close).is_empty());
+        let context_card = broad["cards"]
             .as_array()
             .unwrap()
             .iter()

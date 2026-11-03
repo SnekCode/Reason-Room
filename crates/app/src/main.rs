@@ -23,8 +23,8 @@ use eframe::egui::{
 };
 use infinite_note_canvas_canvas::{
     Camera, CanvasCommand, CanvasDataset, CanvasInteraction, CanvasItemBounds, CanvasItemId,
-    ConceptCard, ConceptKind, MAX_SCALE, MIN_SCALE, Point, Rect as CanvasRect, Relationship,
-    RelationshipKind, SemanticZoomCardLayerMode, SemanticZoomCardLayerVisibility,
+    CardPasteMode, ConceptCard, ConceptKind, MAX_SCALE, MIN_SCALE, Point, Rect as CanvasRect,
+    Relationship, RelationshipKind, SemanticZoomCardLayerMode, SemanticZoomCardLayerVisibility,
     SemanticZoomFrame, SemanticZoomLayer, SemanticZoomLayerPercentSettings,
     SemanticZoomLayerProjection, SemanticZoomLevel, VisualBoundary, WHEEL_ZOOM_SENSITIVITY,
     WorkspaceDocument, ZoomPercentRange, canvas_item_move_ids_with_contained_descendants,
@@ -116,13 +116,10 @@ const SEMANTIC_SCALE_RAIL_ZOOM_ROW_HEIGHT: f32 = 24.0;
 const SEMANTIC_SCALE_RAIL_ZOOM_LABEL_WIDTH: f32 = 72.0;
 const CONTEXT_TRAIL_GAP: f32 = 8.0;
 const CONTEXT_TRAIL_LINE_HEIGHT: f32 = 14.0;
-const SETTINGS_VIEWPORT_ID: &str = "infinite-note-canvas-settings";
 const PREFERENCES_STORAGE_KEY: &str = "infinite-note-canvas-preferences-v1";
 const SETTINGS_WINDOW_INNER_SIZE: [f32; 2] = [480.0, 380.0];
-const SETTINGS_WINDOW_MINIMUM_SIZE: [f32; 2] = [400.0, 320.0];
 const NEW_CANVAS_DEFAULT_TITLE: &str = "Untitled canvas";
 const NEW_CANVAS_FILE_SUFFIX: &str = ".infinite-note.json";
-const CARD_PASTE_OFFSET: f32 = 36.0;
 
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 const NATIVE_SETTINGS_MENU_ITEM_ID: &str = "open-settings";
@@ -154,8 +151,7 @@ fn settings_window_title() -> &'static str {
     }
 }
 
-/// Prevent macOS from turning the canvas and Preferences into tabs in one
-/// window. Preferences is an independent application window by design.
+/// Keep the native canvas window outside automatic macOS tab groups.
 #[cfg(target_os = "macos")]
 fn disable_macos_automatic_window_tabbing() {
     use objc2::MainThreadMarker;
@@ -621,6 +617,8 @@ struct InfiniteNoteCanvasApp {
     dialog: Option<EditorDialog>,
     inspector_draft: Option<ConceptInspectorDraft>,
     card_clipboard: Option<CardClipboard>,
+    paste_choice: Option<PasteChoice>,
+    paste_ghost: Option<PasteGhost>,
     publish_card_clipboard: bool,
     last_canvas_pointer: Option<Point>,
     last_canvas_viewport: Option<Rect>,
@@ -1161,6 +1159,21 @@ struct CardClipboard {
     source: WorkspaceDocument,
 }
 
+#[derive(Clone, Debug)]
+struct PasteChoice {
+    clipboard: CardClipboard,
+    anchor: Point,
+    position: Pos2,
+}
+
+#[derive(Clone, Debug)]
+struct PasteGhost {
+    clipboard: CardClipboard,
+    mode: CardPasteMode,
+    bounds: Vec<CanvasRect>,
+    titles: Vec<String>,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum CardClipboardCommand {
     Copy,
@@ -1226,13 +1239,25 @@ struct ConceptInspectorDraft {
     assertion_error: Option<String>,
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug)]
 struct LensCanvasControls {
     search_query: String,
     search_match_index: usize,
     type_filter_ids: BTreeSet<String>,
     show_all_cards: bool,
     roll_up_relationships: bool,
+}
+
+impl Default for LensCanvasControls {
+    fn default() -> Self {
+        Self {
+            search_query: String::new(),
+            search_match_index: 0,
+            type_filter_ids: BTreeSet::new(),
+            show_all_cards: false,
+            roll_up_relationships: true,
+        }
+    }
 }
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
@@ -1313,6 +1338,8 @@ impl InfiniteNoteCanvasApp {
             dialog: None,
             inspector_draft: None,
             card_clipboard: None,
+            paste_choice: None,
+            paste_ghost: None,
             publish_card_clipboard: false,
             last_canvas_pointer: None,
             last_canvas_viewport: None,
@@ -1340,7 +1367,7 @@ impl InfiniteNoteCanvasApp {
             #[cfg(any(target_os = "macos", target_os = "windows"))]
             _native_application_menu: native_application_menu,
             show_all_cards: false,
-            roll_up_relationships: false,
+            roll_up_relationships: true,
             card_creation_draft: ConceptEditorDraft {
                 title: String::new(),
                 type_id: None,
@@ -1666,7 +1693,10 @@ impl InfiniteNoteCanvasApp {
     fn handle_card_clipboard_shortcuts(&mut self, ctx: &egui::Context) {
         let has_selected_cards = self.interaction.selected_card_ids().next().is_some();
         if !card_clipboard_shortcuts_take_priority(
-            self.dialog.is_some(),
+            self.dialog.is_some()
+                || self.preferences_open()
+                || self.paste_choice.is_some()
+                || self.paste_ghost.is_some(),
             ctx.text_edit_focused(),
             has_selected_cards,
         ) {
@@ -1741,6 +1771,8 @@ impl InfiniteNoteCanvasApp {
 
     fn external_workspace_refresh_is_safe(&self) -> bool {
         self.dialog.is_none()
+            && self.paste_choice.is_none()
+            && self.paste_ghost.is_none()
             && self.gesture.is_none()
             && !self.has_unsaved_inspector_draft()
             && self.side_pane_mode == SidePaneMode::Inspect
@@ -2247,21 +2279,50 @@ impl InfiniteNoteCanvasApp {
             self.set_failure("CARDS NOT PASTED", "Copy one or more cards first.");
             return;
         };
+        let anchor = world_position.unwrap_or_else(|| {
+            self.interaction
+                .camera()
+                .screen_to_world(self.canvas_viewport_size * 0.5)
+        });
+        let cross_view = self.session().is_some_and(|session| {
+            session.active_version_id() != clipboard.version_id
+                || session.active_lens_id() != clipboard.lens_id
+        });
+        self.paste_ghost = None;
+        self.last_canvas_pointer = Some(anchor);
+        if cross_view {
+            let point = self.interaction.camera().world_to_screen(anchor);
+            let origin = self
+                .last_canvas_viewport
+                .map(|rect| rect.min)
+                .unwrap_or(Pos2::ZERO);
+            self.paste_choice = Some(PasteChoice {
+                clipboard,
+                anchor,
+                position: origin + Vec2::new(point.x, point.y),
+            });
+        } else {
+            self.begin_card_paste(clipboard, CardPasteMode::Copy, anchor);
+        }
+    }
+
+    fn begin_card_paste(&mut self, clipboard: CardClipboard, mode: CardPasteMode, anchor: Point) {
         let preview = self.stage_action(|session| {
             session
-                .stage_paste_concepts(
+                .stage_paste_concepts_with_mode(
                     &clipboard.source,
                     &clipboard.version_id,
                     &clipboard.lens_id,
                     &clipboard.concept_ids,
                     Point::default(),
+                    mode,
                 )
                 .map_err(|error| error.to_string())
         });
         let preview = match preview {
             Ok(preview) => preview,
             Err(error) => {
-                self.commit_staged_action(Err(error), None, false, "Cards not pasted.");
+                self.set_failure("CARDS NOT PASTED", error);
                 return;
             }
         };
@@ -2273,12 +2334,23 @@ impl InfiniteNoteCanvasApp {
             camera_scale,
             self.show_all_cards,
         );
-        let source_bounds = preview
+        let bounds: Vec<_> = preview
             .selection_ids()
             .iter()
             .filter_map(|id| projected.get(id).copied())
-            .collect::<Vec<_>>();
-        let destination_bounds = self
+            .collect();
+        let titles = preview
+            .selection_ids()
+            .iter()
+            .filter_map(|id| {
+                preview
+                    .document()
+                    .concept(preview.active_version_id(), *id)
+                    .ok()
+                    .map(|card| card.title.clone())
+            })
+            .collect();
+        let occupied = self
             .session()
             .map(|session| {
                 paste_card_visual_bounds(
@@ -2292,66 +2364,124 @@ impl InfiniteNoteCanvasApp {
                 .collect::<Vec<_>>()
             })
             .unwrap_or_default();
-        let anchor = world_position.unwrap_or_else(|| {
-            self.interaction
-                .camera()
-                .screen_to_world(self.canvas_viewport_size * 0.5)
-        });
-        let offset = card_paste_delta(&source_bounds, &destination_bounds, anchor);
+        if let Some(delta) = card_paste_delta(&bounds, &occupied, anchor) {
+            self.commit_card_paste(&clipboard, mode, delta);
+        } else {
+            self.gesture = None;
+            self.paste_ghost = Some(PasteGhost {
+                clipboard,
+                mode,
+                bounds,
+                titles,
+            });
+        }
+    }
+
+    fn commit_card_paste(&mut self, clipboard: &CardClipboard, mode: CardPasteMode, delta: Point) {
         let staged = self.stage_action(|session| {
             session
-                .stage_paste_concepts(
+                .stage_paste_concepts_with_mode(
                     &clipboard.source,
                     &clipboard.version_id,
                     &clipboard.lens_id,
                     &clipboard.concept_ids,
-                    offset,
+                    delta,
+                    mode,
                 )
                 .map_err(|error| error.to_string())
         });
-        let shared_references = if self.session().is_some_and(|session| {
-            session.active_version_id() == clipboard.version_id
-                && session.active_lens_id() != clipboard.lens_id
-        }) {
-            staged
-                .as_ref()
-                .map(|mutation| {
-                    mutation
-                        .selection_ids()
-                        .iter()
-                        .filter(|id| clipboard.concept_ids.contains(id))
-                        .count()
-                })
-                .unwrap_or(0)
-        } else {
-            0
-        };
-        let message = if shared_references == clipboard.concept_ids.len() {
-            format!(
-                "Added {shared_references} shared card {} without relationships.",
-                if shared_references == 1 {
-                    "reference"
-                } else {
-                    "references"
+        self.commit_staged_action(
+            staged,
+            None,
+            false,
+            match mode {
+                CardPasteMode::Copy => "Pasted independent card copies without relationships.",
+                CardPasteMode::Reference => {
+                    "Pasted shared-content references without relationships."
                 }
-            )
-        } else if shared_references == 0 {
-            format!(
-                "Pasted {} independent card {} without relationships.",
-                clipboard.concept_ids.len(),
-                if clipboard.concept_ids.len() == 1 {
-                    "copy"
-                } else {
-                    "copies"
-                }
-            )
-        } else {
-            format!(
-                "Pasted {} cards ({shared_references} shared references) without relationships.",
-                clipboard.concept_ids.len()
-            )
+            },
+        );
+    }
+
+    fn paste_choice_popup(&mut self, ctx: &egui::Context) {
+        let Some(choice) = self.paste_choice.clone() else {
+            return;
         };
-        self.commit_staged_action(staged, None, false, message);
+        let mut selected = None;
+        let mut cancelled = false;
+        let response = egui::Modal::new(egui::Id::unique("paste-choice"))
+            .area(
+                egui::Area::new(egui::Id::unique("paste-choice"))
+                    .fixed_pos(choice.position)
+                    .order(egui::Order::Foreground)
+                    .sense(Sense::hover()),
+            )
+            .show(ctx, |ui| {
+                ui.set_width(220.0);
+                ui.strong("Paste cards");
+                if ui
+                    .button("Copy")
+                    .on_hover_text("Independent card content.")
+                    .clicked()
+                {
+                    selected = Some(CardPasteMode::Copy);
+                }
+                if ui
+                    .button("Reference")
+                    .on_hover_text("Share content edits across Views and Versions.")
+                    .clicked()
+                {
+                    selected = Some(CardPasteMode::Reference);
+                }
+                cancelled = ui.button("Cancel").clicked();
+            });
+        if selected.is_some() || cancelled || response.should_close() {
+            self.paste_choice = None;
+        }
+        if let Some(mode) = selected {
+            self.begin_card_paste(choice.clipboard, mode, choice.anchor);
+        }
+    }
+
+    fn paint_paste_ghost(&self, painter: &Painter, viewport: Rect) {
+        let Some(ghost) = &self.paste_ghost else {
+            return;
+        };
+        let Some(anchor) = self.last_canvas_pointer else {
+            return;
+        };
+        let delta = centered_card_paste_delta(&ghost.bounds, anchor);
+        let camera = self.interaction.camera();
+        for (bounds, title) in ghost.bounds.iter().zip(&ghost.titles) {
+            let min = camera.world_to_screen(bounds.origin + delta);
+            let max = camera.world_to_screen(bounds.origin + delta + bounds.size);
+            let rect = Rect::from_min_max(
+                viewport.min + Vec2::new(min.x, min.y),
+                viewport.min + Vec2::new(max.x, max.y),
+            );
+            painter.rect(
+                rect,
+                5.0,
+                color_with_opacity(ATLAS_ROUTE_BLUE, 0.20),
+                Stroke::new(1.5, ATLAS_ROUTE_BLUE),
+                StrokeKind::Inside,
+            );
+            painter.with_clip_rect(rect.intersect(viewport)).text(
+                rect.min + Vec2::splat(8.0),
+                Align2::LEFT_TOP,
+                title,
+                FontId::proportional(ATLAS_CARD_TITLE_SIZE),
+                ATLAS_PAPER_SIGNAL,
+            );
+        }
+        let pointer = camera.world_to_screen(anchor);
+        painter.text(
+            viewport.min + Vec2::new(pointer.x + 12.0, pointer.y + 18.0),
+            Align2::LEFT_TOP,
+            "Click to paste · Esc to cancel",
+            FontId::proportional(14.0),
+            ATLAS_CONTROL_AMBER,
+        );
     }
 
     fn open_create_version_pane(&mut self, source_title: String) {
@@ -3234,6 +3364,7 @@ impl InfiniteNoteCanvasApp {
         self.semantic_zoom_layer_id = None;
         self.semantic_zoom_layer_draft = None;
         self.show_all_cards = false;
+        self.roll_up_relationships = true;
         self.card_creation_draft = ConceptEditorDraft {
             title: String::new(),
             type_id: None,
@@ -3244,6 +3375,8 @@ impl InfiniteNoteCanvasApp {
             summary: String::new(),
         };
         self.layer_creation_title.clear();
+        self.paste_choice = None;
+        self.paste_ghost = None;
         self.layer_cross_section_drafts.clear();
         self.layer_cross_section_creating = false;
         self.canvas_search_query.clear();
@@ -3291,38 +3424,22 @@ impl InfiniteNoteCanvasApp {
             return;
         }
 
-        let preferences = Arc::clone(&self.preferences);
         let card_types = self.session().map(supported_type_ids).unwrap_or_else(|| {
             ConceptKind::ALL
                 .into_iter()
                 .map(|kind| kind.type_id().to_string())
                 .collect()
         });
-        ctx.show_viewport_deferred(
-            egui::ViewportId::from_hash_of(SETTINGS_VIEWPORT_ID),
-            egui::ViewportBuilder::default()
-                .with_title(settings_window_title())
-                .with_inner_size(SETTINGS_WINDOW_INNER_SIZE)
-                .with_min_inner_size(SETTINGS_WINDOW_MINIMUM_SIZE)
-                .with_resizable(true),
-            move |ui, viewport_class| {
-                ui.visuals_mut().clone_from(&atlas_visuals());
-                let mut preferences = preferences
-                    .lock()
-                    .unwrap_or_else(|error| error.into_inner());
-                if !preferences.open {
-                    ui.ctx().send_viewport_cmd(egui::ViewportCommand::Close);
-                    return;
-                }
-                if preferences.focus_requested {
-                    if viewport_class != egui::ViewportClass::EmbeddedWindow {
-                        ui.ctx().send_viewport_cmd(egui::ViewportCommand::Focus);
-                    }
-                    preferences.focus_requested = false;
-                }
-                let mut close_window = ui.input(|input| input.viewport().close_requested());
-
-                ui.painter().rect_filled(ui.max_rect(), 0.0, ATLAS_GROUND);
+        let response = egui::Modal::new(egui::Id::unique("preferences-dialog"))
+            .frame(egui::Frame::popup(&ctx.style_of(egui::Theme::Dark)).fill(ATLAS_GROUND))
+            .show(ctx, |ui| {
+                ui.set_width(SETTINGS_WINDOW_INNER_SIZE[0].min((ctx.content_rect().width() - 48.0).max(200.0)));
+                let mut preferences = self.preferences.lock().unwrap_or_else(|error| error.into_inner());
+                preferences.focus_requested = false;
+                let mut close_window = false;
+                egui::ScrollArea::vertical()
+                    .max_height((ctx.content_rect().height() - 80.0).max(120.0))
+                    .show(ui, |ui| {
                 ui.add_space(18.0);
                 ui.horizontal(|ui| {
                     ui.add_space(18.0);
@@ -3518,15 +3635,27 @@ impl InfiniteNoteCanvasApp {
                     ui.add_space(18.0);
                 });
 
+                    });
                 if close_window {
                     preferences.open = false;
-                    preferences.focus_requested = false;
-                    if viewport_class != egui::ViewportClass::EmbeddedWindow {
-                        ui.ctx().send_viewport_cmd(egui::ViewportCommand::Close);
-                    }
                 }
-            },
-        );
+            });
+        if response.is_top_modal
+            && !response.any_popup_open
+            && ctx.input_mut(|input| input.consume_key(egui::Modifiers::NONE, egui::Key::Escape))
+        {
+            self.preferences
+                .lock()
+                .unwrap_or_else(|error| error.into_inner())
+                .open = false;
+        }
+    }
+
+    fn preferences_open(&self) -> bool {
+        self.preferences
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .open
     }
 
     fn display_preferences(&self) -> (bool, bool) {
@@ -4026,6 +4155,8 @@ impl InfiniteNoteCanvasApp {
         self.show_all_cards = controls.show_all_cards;
         self.roll_up_relationships = controls.roll_up_relationships;
         self.last_canvas_pointer = None;
+        self.paste_choice = None;
+        self.paste_ghost = None;
         let selected_card = self
             .selected_concept_id()
             .and_then(|concept_id| self.dataset.card_by_id(concept_id));
@@ -4214,7 +4345,7 @@ impl InfiniteNoteCanvasApp {
                 let paste = ui
                     .add_enabled(self.can_paste_cards(), egui::Button::new("Paste cards"))
                     .on_hover_text(
-                        "Paste into the same version and view where the cards were copied.",
+                        "Paste at the canvas pointer. Across Views or Versions, choose Copy or Reference.",
                     );
                 if paste.clicked() {
                     requested_paste_cards = true;
@@ -4471,6 +4602,7 @@ impl InfiniteNoteCanvasApp {
             .order(egui::Order::Foreground)
             .fixed_pos(position)
             .show(ctx, |ui| {
+                if self.preferences_open() || self.paste_choice.is_some() { ui.disable(); }
                 ui.set_width(WIDTH);
                 egui::Frame::new()
                     .fill(color_with_opacity(ATLAS_SURVEY_SLATE, 0.96))
@@ -4507,15 +4639,17 @@ impl InfiniteNoteCanvasApp {
                                 clear_requested = true;
                             }
                         });
-                        ui.horizontal(|ui| {
-                            if ui.checkbox(&mut self.roll_up_relationships, "O-I").on_hover_text("Roll relationships from hidden child cards up to their visible parent.").changed() {
-                                self.refresh_display_dataset();
-                            }
-                            let mut show_all = self.show_all_cards;
-                            if ui.add_enabled(self.semantic_zoom_is_configured(), egui::Checkbox::new(&mut show_all, "View all")).changed() {
-                                self.toggle_show_all_cards();
-                            }
-                        });
+                        if pill_switch(ui, &mut self.roll_up_relationships, "Roll up relationships")
+                            .on_hover_text("Use a visible parent for relationships whose child endpoint is hidden. Card visibility is unchanged.")
+                            .changed() {
+                            self.refresh_display_dataset();
+                        }
+                        let mut show_all = self.show_all_cards;
+                        if ui.add_enabled_ui(self.semantic_zoom_is_configured(), |ui| {
+                            pill_switch(ui, &mut show_all, "View all")
+                        }).inner.changed() {
+                            self.toggle_show_all_cards();
+                        }
                         ui.horizontal(|ui| {
                             egui::menu::MenuButton::new("Filter types")
                                 .config(
@@ -4646,7 +4780,14 @@ impl InfiniteNoteCanvasApp {
         let controls_bounds = self.canvas_search_and_filter_controls(ui.ctx(), viewport);
         self.handle_canvas_input(ui, &response, viewport, viewport_size, controls_bounds);
         self.paint_canvas(&painter, viewport, viewport_size);
-        self.canvas_context_menu(&response, viewport, viewport_size, controls_bounds);
+        self.paint_paste_ghost(&painter, viewport);
+        if ui.is_enabled()
+            && !self.preferences_open()
+            && self.paste_choice.is_none()
+            && self.paste_ghost.is_none()
+        {
+            self.canvas_context_menu(&response, viewport, viewport_size, controls_bounds);
+        }
     }
 
     fn canvas_context_menu(
@@ -5120,6 +5261,24 @@ impl InfiniteNoteCanvasApp {
         viewport_size: Point,
         controls_bounds: Rect,
     ) {
+        if !ui.is_enabled() || self.preferences_open() || self.paste_choice.is_some() {
+            return;
+        }
+        if self.paste_ghost.is_some() {
+            if response.clicked()
+                && let Some(pointer) = ui.input(|input| input.pointer.hover_pos())
+                && !controls_bounds.contains(pointer)
+            {
+                let anchor = self
+                    .interaction
+                    .camera()
+                    .screen_to_world(point_in_viewport(pointer, viewport));
+                let ghost = self.paste_ghost.take().unwrap();
+                let delta = centered_card_paste_delta(&ghost.bounds, anchor);
+                self.commit_card_paste(&ghost.clipboard, ghost.mode, delta);
+            }
+            return;
+        }
         if matches!(
             self.dialog,
             Some(EditorDialog::ChooseRelationshipKind { .. })
@@ -7808,18 +7967,26 @@ impl eframe::App for InfiniteNoteCanvasApp {
         #[cfg(not(target_arch = "wasm32"))]
         self.refresh_external_workspace(ui.ctx());
         self.process_native_menu_request();
-        self.settings_window(ui.ctx());
-        if ui.input(|input| input.key_pressed(egui::Key::Escape)) {
+        if !self.preferences_open() && ui.input(|input| input.key_pressed(egui::Key::Escape)) {
+            self.paste_choice = None;
+            self.paste_ghost = None;
             self.dialog = None;
             if self.side_pane_mode != SidePaneMode::Inspect {
                 self.side_pane_mode = SidePaneMode::Inspect;
             }
         }
-        if ui.input(|input| input.key_pressed(egui::Key::Tab)) {
+        if !self.preferences_open()
+            && self.paste_choice.is_none()
+            && self.paste_ghost.is_none()
+            && ui.input(|input| input.key_pressed(egui::Key::Tab))
+        {
             self.cycle_lens();
         }
         if should_delete_canvas_selection(
-            self.dialog.is_some(),
+            self.dialog.is_some()
+                || self.preferences_open()
+                || self.paste_choice.is_some()
+                || self.paste_ghost.is_some(),
             ui.ctx().text_edit_focused(),
             ui.input(|input| input.key_pressed(egui::Key::Delete)),
             ui.input(|input| input.key_pressed(egui::Key::Backspace)),
@@ -7836,6 +8003,9 @@ impl eframe::App for InfiniteNoteCanvasApp {
                 .max_rect(content_rect)
                 .layout(Layout::top_down(Align::Min)),
             |ui| {
+                if self.preferences_open() || self.paste_choice.is_some() {
+                    ui.disable();
+                }
                 egui::Frame::new().fill(ATLAS_SURVEY_SLATE).show(ui, |ui| {
                     ui.vertical(|ui| {
                         self.top_bar(ui);
@@ -7884,9 +8054,13 @@ impl eframe::App for InfiniteNoteCanvasApp {
             },
         );
         self.dialogs(ui.ctx());
-        self.handle_history_shortcuts(ui.ctx());
+        if !self.preferences_open() && self.paste_choice.is_none() && self.paste_ghost.is_none() {
+            self.handle_history_shortcuts(ui.ctx());
+        }
         self.publish_pending_card_clipboard(ui.ctx());
         self.toasts(ui.ctx());
+        self.paste_choice_popup(ui.ctx());
+        self.settings_window(ui.ctx());
     }
 }
 
@@ -7966,33 +8140,145 @@ fn paste_card_visual_bounds(
         .collect()
 }
 
-/// Anchor the copied group at the cursor. If that would overlap an existing card,
-/// shift the group just beyond the blocking card; never create accidental nesting.
-fn card_paste_delta(source: &[CanvasRect], occupied: &[CanvasRect], anchor: Point) -> Point {
-    let Some(first) = source.first() else {
-        return Point::default();
-    };
-    let origin = source.iter().fold(first.origin, |point, bounds| {
-        Point::new(point.x.min(bounds.origin.x), point.y.min(bounds.origin.y))
-    });
-    let mut delta = anchor - origin;
-    loop {
-        let mut next_x = delta.x;
-        for bounds in source {
+fn centered_card_paste_delta(source: &[CanvasRect], anchor: Point) -> Point {
+    source
+        .iter()
+        .copied()
+        .reduce(canvas_rect_union)
+        .map(|bounds| anchor - bounds.center())
+        .unwrap_or_default()
+}
+
+/// Try the cursor first, then the nearest clear position within half the
+/// group's width/height. A missing result requires explicit ghost placement.
+fn card_paste_delta(
+    source: &[CanvasRect],
+    occupied: &[CanvasRect],
+    anchor: Point,
+) -> Option<Point> {
+    let group = source.iter().copied().reduce(canvas_rect_union)?;
+    let centered = anchor - group.center();
+    let clear = |delta| {
+        source.iter().all(|bounds| {
             let pasted = CanvasRect::new(bounds.origin + delta, bounds.size);
-            for obstacle in occupied {
-                if pasted.intersects(*obstacle) {
-                    next_x = next_x.max(
-                        obstacle.origin.x + obstacle.size.x + CARD_PASTE_OFFSET - bounds.origin.x,
-                    );
+            occupied
+                .iter()
+                .all(|obstacle| !pasted.intersects(*obstacle))
+        })
+    };
+    if clear(centered) {
+        return Some(centered);
+    }
+    let radius = group.size * 0.5;
+    let mut xs = vec![0.0_f32];
+    let mut forbidden = Vec::new();
+    for bounds in source {
+        let placed = CanvasRect::new(bounds.origin + centered, bounds.size);
+        for obstacle in occupied {
+            let left = obstacle.origin.x - placed.max_x();
+            let right = obstacle.max_x() - placed.origin.x;
+            let top = obstacle.origin.y - placed.max_y();
+            let bottom = obstacle.max_y() - placed.origin.y;
+            if left <= radius.x && right >= -radius.x && top <= radius.y && bottom >= -radius.y {
+                if left < -radius.x && right > radius.x && top < -radius.y && bottom > radius.y {
+                    return None;
                 }
+                xs.extend([left, right].into_iter().filter(|x| x.abs() <= radius.x));
+                forbidden.push((left, right, top, bottom));
             }
         }
-        if next_x == delta.x {
-            return delta;
-        }
-        delta.x = next_x;
     }
+    xs.sort_by(f32::total_cmp);
+    xs.dedup();
+    // Sweep obstacle edges instead of allocating every x/y combination.
+    // For any fixed x, the closest permitted y is zero or the edge of the
+    // merged interval that contains zero. Touching boundaries remain legal.
+    let mut candidates = Vec::new();
+    for x in xs {
+        let extent = radius.y * (1.0 - (x / radius.x).powi(2)).max(0.0).sqrt();
+        let mut intervals = forbidden
+            .iter()
+            .filter(|(left, right, _, _)| x > *left && x < *right)
+            .map(|(_, _, top, bottom)| (*top, *bottom))
+            .collect::<Vec<_>>();
+        intervals.sort_by(|left, right| left.0.total_cmp(&right.0));
+        let mut merged: Vec<(f32, f32)> = Vec::new();
+        for (start, end) in intervals {
+            if let Some(previous) = merged.last_mut()
+                && start < previous.1
+            {
+                previous.1 = previous.1.max(end);
+            } else {
+                merged.push((start, end));
+            }
+        }
+        if let Some((top, bottom)) = merged
+            .into_iter()
+            .find(|(top, bottom)| *top < 0.0 && *bottom > 0.0)
+        {
+            candidates.extend(
+                [top, bottom]
+                    .into_iter()
+                    .filter(|y| y.abs() <= extent)
+                    .map(|y| Point::new(x, y)),
+            );
+        } else {
+            candidates.push(Point::new(x, 0.0));
+        }
+    }
+    candidates.sort_by(|left, right| {
+        (left.x.powi(2) + left.y.powi(2))
+            .total_cmp(&(right.x.powi(2) + right.y.powi(2)))
+            .then(left.x.total_cmp(&right.x))
+            .then(left.y.total_cmp(&right.y))
+    });
+    candidates
+        .into_iter()
+        .map(|shift| centered + shift)
+        .find(|delta| clear(*delta))
+}
+
+fn pill_switch(ui: &mut egui::Ui, value: &mut bool, label: &str) -> egui::Response {
+    let galley = ui.painter().layout_no_wrap(
+        label.into(),
+        egui::TextStyle::Body.resolve(ui.style()),
+        ui.visuals().text_color(),
+    );
+    let size = Vec2::new(38.0 + 8.0 + galley.size().x, 24.0);
+    let (rect, mut response) = ui.allocate_exact_size(size, Sense::click());
+    if response.clicked() {
+        *value = !*value;
+        response.mark_changed();
+    }
+    response.widget_info(|| {
+        egui::WidgetInfo::selected(egui::Role::Switch, ui.is_enabled(), *value, label)
+    });
+    let track = Rect::from_min_size(rect.min + Vec2::new(0.0, 2.0), Vec2::new(38.0, 20.0));
+    let visuals = ui.style().interact_selectable(&response, *value);
+    ui.painter().rect(
+        track,
+        10.0,
+        if *value {
+            ATLAS_ROUTE_BLUE
+        } else {
+            visuals.bg_fill
+        },
+        visuals.bg_stroke,
+        StrokeKind::Inside,
+    );
+    let x = if *value {
+        track.right() - 10.0
+    } else {
+        track.left() + 10.0
+    };
+    ui.painter()
+        .circle_filled(Pos2::new(x, track.center().y), 7.0, ATLAS_PAPER_SIGNAL);
+    ui.painter().galley(
+        rect.min + Vec2::new(46.0, (24.0 - galley.size().y) * 0.5),
+        galley,
+        visuals.text_color(),
+    );
+    response
 }
 
 /// Text editors always retain normal system copy/paste, including with a selected card.
@@ -15733,6 +16019,7 @@ mod tests {
             |command| matches!(command, egui::OutputCommand::CopyText(text) if !text.is_empty())
         ));
         output.textures_delta.clear();
+        app.last_canvas_pointer = Some(Point::new(10_000.0, 10_000.0));
         let mut output = ctx.run_ui(
             egui::RawInput {
                 events: vec![egui::Event::Paste("Reason Room cards".into())],
@@ -15744,6 +16031,7 @@ mod tests {
         );
         output.textures_delta.clear();
         assert_eq!(app.dataset.cards().count(), count + 1);
+        app.last_canvas_pointer = Some(Point::new(20_000.0, 20_000.0));
         let mut output = ctx.run_ui(
             egui::RawInput {
                 events: vec![egui::Event::Key {
@@ -15789,9 +16077,11 @@ mod tests {
         assert!(app.canvas_search_query.is_empty());
         assert!(app.canvas_type_filter_ids.is_empty());
         assert!(!app.show_all_cards);
-        assert!(!app.roll_up_relationships);
+        assert!(app.roll_up_relationships);
         assert!(app.can_paste_cards());
         app.paste_cards_at(Some(Point::new(5000.0, 5000.0)));
+        let choice = app.paste_choice.take().expect("cross-View paste must ask");
+        app.begin_card_paste(choice.clipboard, CardPasteMode::Reference, choice.anchor);
         let destination = app
             .session()
             .unwrap()
@@ -15810,13 +16100,186 @@ mod tests {
             app.interaction.camera().scale,
             false,
         );
-        assert_eq!(bounds[&5].origin, Point::new(5000.0, 5000.0));
+        assert_eq!(bounds[&5].center(), Point::new(5000.0, 5000.0));
         app.select_lens("organization-landscape".into());
         assert_eq!(app.canvas_search_query, "source-only query");
         assert!(app.canvas_type_filter_ids.contains("service"));
         assert!(app.show_all_cards);
         assert!(app.roll_up_relationships);
         std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn cross_version_paste_popup_offers_independent_copy_or_shared_reference_at_pointer() {
+        for (label, shared) in [
+            ("Copy", Some(false)),
+            ("Reference", Some(true)),
+            ("Cancel", None),
+        ] {
+            let (mut app, path) = authored_layers_test_app(&format!("paste-choice-{label}"));
+            let staged = app
+                .session()
+                .unwrap()
+                .stage_create_version_from_active("Destination".into())
+                .unwrap();
+            app.commit_staged_action(Ok(staged), None, false, "test");
+            // Select the original after version creation before capturing the clipboard.
+            app.select_version("current".into());
+            app.set_selection(Some(5));
+            app.copy_selected_cards();
+            let version = app.session().unwrap().document().planning_scenarios[0]
+                .version
+                .id
+                .clone();
+            app.select_version(version.clone());
+            let viewport = Rect::from_min_size(Pos2::ZERO, Vec2::new(1200.0, 900.0));
+            app.last_canvas_viewport = Some(viewport);
+            app.interaction
+                .set_camera(Camera::new(Point::default(), 0.01));
+            app.paste_cards_at(Some(Point::new(50_000.0, 50_000.0)));
+            let choice = app.paste_choice.as_ref().unwrap();
+            assert_eq!(choice.position, Pos2::new(500.0, 500.0));
+            let before = fs::read_to_string(&path).unwrap();
+            let ctx = egui::Context::default();
+            let frame = |app: &mut InfiniteNoteCanvasApp, events| {
+                let mut output = ctx.run_ui(
+                    egui::RawInput {
+                        screen_rect: Some(viewport),
+                        events,
+                        ..Default::default()
+                    },
+                    |ui| app.paste_choice_popup(ui.ctx()),
+                );
+                output.textures_delta.clear();
+                output
+            };
+            frame(&mut app, vec![]);
+            let output = frame(&mut app, vec![]);
+            assert_eq!(
+                fs::read_to_string(&path).unwrap(),
+                before,
+                "opening a popup must not save"
+            );
+            let button = layer_test_text_position(&output, label);
+            for pressed in [true, false] {
+                frame(
+                    &mut app,
+                    vec![
+                        egui::Event::PointerMoved(button),
+                        layer_test_pointer(button, pressed),
+                    ],
+                );
+            }
+            assert!(app.paste_choice.is_none());
+            assert!(app.paste_ghost.is_none());
+            let Some(shared) = shared else {
+                assert_eq!(
+                    fs::read_to_string(&path).unwrap(),
+                    before,
+                    "Cancel must not save"
+                );
+                fs::remove_file(path).unwrap();
+                continue;
+            };
+            let pasted = app.selected_concept_id().unwrap();
+            let staged = app
+                .session()
+                .unwrap()
+                .stage_edit_concept_title(pasted, "Changed pasted title".into())
+                .unwrap();
+            app.commit_staged_action(Ok(staged), Some(pasted), true, "test");
+            let saved = WorkspaceDocument::parse_json(&fs::read_to_string(&path).unwrap()).unwrap();
+            assert_eq!(
+                saved.concept("current", 5).unwrap().title == "Changed pasted title",
+                shared
+            );
+            assert_ne!(
+                saved.concept(&version, 5).unwrap().title,
+                "Changed pasted title"
+            );
+            fs::remove_file(path).unwrap();
+        }
+    }
+
+    #[test]
+    fn colliding_paste_waits_for_a_click_and_allows_explicit_overlap() {
+        let (mut app, path) = authored_layers_test_app("ghost-confirm");
+        app.interaction
+            .set_camera(Camera::new(Point::default(), 1.0));
+        app.set_selection(Some(5));
+        app.copy_selected_cards();
+        let bounds = paste_card_visual_bounds(
+            app.session().unwrap().document(),
+            "current",
+            "organization-landscape",
+            1.0,
+            false,
+        )[&5];
+        let before = fs::read_to_string(&path).unwrap();
+        app.paste_cards_at(Some(bounds.center()));
+        assert!(app.paste_ghost.is_some());
+        assert_eq!(fs::read_to_string(&path).unwrap(), before);
+        let ctx = egui::Context::default();
+        let viewport = Rect::from_min_size(Pos2::ZERO, Vec2::new(2000.0, 1600.0));
+        let point = bounds.center();
+        let pointer = Pos2::new(point.x, point.y);
+        let mut warmup = ctx.run_ui(
+            egui::RawInput {
+                screen_rect: Some(viewport),
+                ..Default::default()
+            },
+            |ui| {
+                let response = ui.interact(
+                    viewport,
+                    egui::Id::unique("ghost-test-canvas"),
+                    Sense::click_and_drag(),
+                );
+                app.handle_canvas_input(
+                    ui,
+                    &response,
+                    viewport,
+                    Point::new(2000.0, 1600.0),
+                    Rect::NOTHING,
+                );
+            },
+        );
+        warmup.textures_delta.clear();
+        for pressed in [true, false] {
+            let mut output = ctx.run_ui(
+                egui::RawInput {
+                    screen_rect: Some(viewport),
+                    events: vec![
+                        egui::Event::PointerMoved(pointer),
+                        layer_test_pointer(pointer, pressed),
+                    ],
+                    ..Default::default()
+                },
+                |ui| {
+                    let response = ui.interact(
+                        viewport,
+                        egui::Id::unique("ghost-test-canvas"),
+                        Sense::click_and_drag(),
+                    );
+                    app.handle_canvas_input(
+                        ui,
+                        &response,
+                        viewport,
+                        Point::new(2000.0, 1600.0),
+                        Rect::NOTHING,
+                    );
+                },
+            );
+            output.textures_delta.clear();
+        }
+        assert!(app.paste_ghost.is_none());
+        let pasted = app.selected_concept_id().unwrap();
+        assert_ne!(pasted, 5);
+        let saved = WorkspaceDocument::parse_json(&fs::read_to_string(&path).unwrap()).unwrap();
+        let painted =
+            paste_card_visual_bounds(&saved, "current", "organization-landscape", 1.0, false);
+        assert_eq!(painted[&pasted].center(), bounds.center());
+        assert!(painted[&pasted].intersects(bounds));
+        fs::remove_file(path).unwrap();
     }
 
     #[test]
@@ -15865,29 +16328,33 @@ mod tests {
             assert!(bounds.size.y > raw.size.y * 2.0);
             assert!(bounds.size.x * scale >= MINIMUM_VISIBLE_CARD_SIZE);
             assert!(bounds.size.y * scale >= MINIMUM_VISIBLE_CARD_SIZE);
-            let delta = card_paste_delta(&[bounds], &[bounds], bounds.origin);
-            assert!(!CanvasRect::new(bounds.origin + delta, bounds.size).intersects(bounds));
+            assert_eq!(
+                card_paste_delta(&[bounds], &[bounds], bounds.center()),
+                None,
+                "an occupied center cannot be escaped within half a card"
+            );
         }
     }
 
     #[test]
-    fn pasted_group_anchors_at_cursor_and_escapes_overlapping_cards() {
+    fn pasted_group_centers_at_cursor_and_uses_ghost_when_nearby_space_is_blocked() {
         let source = [
             CanvasRect::new(Point::new(10.0, 20.0), Point::new(100.0, 80.0)),
             CanvasRect::new(Point::new(30.0, 40.0), Point::new(20.0, 20.0)),
         ];
         let cursor = Point::new(400.0, 300.0);
-        let delta = card_paste_delta(&source, &[], cursor);
-        assert_eq!(source[0].origin + delta, cursor);
-        let delta = card_paste_delta(&source, &source, source[0].origin);
-        for bounds in source {
-            let pasted = CanvasRect::new(bounds.origin + delta, bounds.size);
-            assert!(source.iter().all(|origin| !pasted.intersects(*origin)));
-        }
-        // Existing children cannot become children of the pasted outer card.
-        let obstacle = CanvasRect::new(Point::new(420.0, 320.0), Point::new(20.0, 20.0));
-        let delta = card_paste_delta(&source, &[obstacle], cursor);
+        let delta = card_paste_delta(&source, &[], cursor).unwrap();
+        assert_eq!(source[0].center() + delta, cursor);
+        assert_eq!(
+            (source[1].origin + delta) - (source[0].origin + delta),
+            Point::new(20.0, 20.0)
+        );
+        let obstacle = CanvasRect::new(Point::new(430.0, 260.0), Point::new(100.0, 80.0));
+        let delta = card_paste_delta(&source, &[obstacle], cursor).unwrap();
         assert!(!CanvasRect::new(source[0].origin + delta, source[0].size).intersects(obstacle));
+        assert!((source[0].center().x + delta.x - cursor.x).abs() <= 50.0);
+        let occupied = CanvasRect::new(Point::new(200.0, 100.0), Point::new(400.0, 400.0));
+        assert_eq!(card_paste_delta(&source, &[occupied], cursor), None);
     }
 
     #[test]
@@ -16000,7 +16467,7 @@ mod tests {
     }
 
     #[test]
-    fn preferences_open_as_an_embedded_window_without_native_viewports() {
+    fn preferences_open_as_a_fixed_modal_without_additional_viewports() {
         let app = test_app();
         app.open_settings_window();
         let ctx = egui::Context::default();
@@ -16017,6 +16484,132 @@ mod tests {
                 .commands
                 .contains(&egui::ViewportCommand::Close)
         );
+    }
+
+    #[test]
+    fn preferences_blocks_canvas_filters_and_shortcuts_and_escape_closes_it() {
+        let (mut app, path) = authored_layers_test_app("preferences-modal");
+        app.set_selection(Some(5));
+        app.copy_selected_cards();
+        app.open_settings_window();
+        let before = fs::read_to_string(&path).unwrap();
+        let ctx = egui::Context::default();
+        let viewport = Rect::from_min_size(Pos2::ZERO, Vec2::new(1200.0, 900.0));
+        let mut frame = eframe::Frame::_new_kittest();
+        let mut render = |app: &mut InfiniteNoteCanvasApp, events| {
+            let mut output = ctx.run_ui(
+                egui::RawInput {
+                    screen_rect: Some(viewport),
+                    events,
+                    ..Default::default()
+                },
+                |ui| {
+                    eframe::App::ui(app, ui, &mut frame);
+                },
+            );
+            output.textures_delta.clear();
+            output
+        };
+        render(&mut app, vec![]);
+        let output = render(&mut app, vec![]);
+        let heading = output
+            .shapes
+            .iter()
+            .rev()
+            .find_map(|shape| {
+                if let egui::Shape::Text(text) = &shape.shape
+                    && text.galley.job.text == settings_window_title()
+                {
+                    Some(text.pos + text.galley.size() * 0.5)
+                } else {
+                    None
+                }
+            })
+            .unwrap();
+        assert!(
+            heading.x > 300.0 && heading.x < 900.0 && heading.y > 100.0,
+            "Preferences must be a centered dialog"
+        );
+        assert_eq!(output.viewport_output.len(), 1);
+        let switch = layer_test_text_position(&output, "Roll up relationships");
+        for pressed in [true, false] {
+            render(
+                &mut app,
+                vec![
+                    egui::Event::PointerMoved(switch),
+                    layer_test_pointer(switch, pressed),
+                ],
+            );
+        }
+        assert!(
+            app.roll_up_relationships,
+            "Preferences blocks background filters"
+        );
+        assert!(app.preferences_open());
+        render(
+            &mut app,
+            vec![
+                egui::Event::Paste("cards".into()),
+                egui::Event::Key {
+                    key: egui::Key::Delete,
+                    physical_key: None,
+                    pressed: true,
+                    repeat: false,
+                    modifiers: egui::Modifiers::NONE,
+                },
+            ],
+        );
+        assert_eq!(fs::read_to_string(&path).unwrap(), before);
+        render(
+            &mut app,
+            vec![egui::Event::Key {
+                key: egui::Key::Escape,
+                physical_key: None,
+                pressed: true,
+                repeat: false,
+                modifiers: egui::Modifiers::NONE,
+            }],
+        );
+        assert!(!app.preferences_open());
+        fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn escape_cancels_a_paste_ghost_without_saving() {
+        let (mut app, path) = authored_layers_test_app("ghost-escape");
+        app.set_selection(Some(5));
+        app.copy_selected_cards();
+        let session = app.session().unwrap();
+        let anchor = paste_card_visual_bounds(
+            session.document(),
+            session.active_version_id(),
+            session.active_lens_id(),
+            app.interaction.camera().scale,
+            app.show_all_cards,
+        )[&5]
+            .center();
+        let before = fs::read_to_string(&path).unwrap();
+        app.paste_cards_at(Some(anchor));
+        assert!(app.paste_ghost.is_some());
+        let ctx = egui::Context::default();
+        let mut frame = eframe::Frame::_new_kittest();
+        let mut output = ctx.run_ui(
+            egui::RawInput {
+                events: vec![egui::Event::Key {
+                    key: egui::Key::Escape,
+                    physical_key: None,
+                    pressed: true,
+                    repeat: false,
+                    modifiers: egui::Modifiers::NONE,
+                }],
+                ..Default::default()
+            },
+            |ui| eframe::App::ui(&mut app, ui, &mut frame),
+        );
+        output.textures_delta.clear();
+        assert!(app.paste_ghost.is_none());
+        assert_eq!(fs::read_to_string(&path).unwrap(), before);
+        fs::remove_file(path).unwrap();
     }
 
     #[test]
@@ -17123,6 +17716,8 @@ mod tests {
             dialog: None,
             inspector_draft: None,
             card_clipboard: None,
+            paste_choice: None,
+            paste_ghost: None,
             publish_card_clipboard: false,
             last_canvas_pointer: None,
             last_canvas_viewport: None,
@@ -17142,7 +17737,7 @@ mod tests {
             #[cfg(any(target_os = "macos", target_os = "windows"))]
             _native_application_menu: None,
             show_all_cards: false,
-            roll_up_relationships: false,
+            roll_up_relationships: true,
             card_creation_draft: ConceptEditorDraft {
                 title: String::new(),
                 type_id: None,

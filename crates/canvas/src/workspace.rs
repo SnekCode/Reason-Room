@@ -9,7 +9,7 @@ use crate::{
     card_parent_ids, cards_are_in_containment_chain,
 };
 
-pub const WORKSPACE_SCHEMA_VERSION: u32 = 6;
+pub const WORKSPACE_SCHEMA_VERSION: u32 = 7;
 /// The default new-card dimensions at 100% zoom. Automatic layer selection
 /// compares Lens-local card bounds to this presentation baseline.
 pub const NEW_CARD_BASELINE_SIZE_AT_100_PERCENT: Point = Point::new(240.0, 120.0);
@@ -55,6 +55,9 @@ pub struct PlanningScenario {
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct WorkspaceConcept {
+    /// Explicit shared-content identity; geometry and relationships remain local.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub content_reference: Option<String>,
     pub id: u32,
     pub type_id: String,
     pub title: String,
@@ -65,6 +68,12 @@ pub struct WorkspaceConcept {
     pub execution_mode: Option<ExecutionMode>,
     #[serde(default)]
     pub attributes: BTreeMap<String, String>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CardPasteMode {
+    Copy,
+    Reference,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -733,7 +742,7 @@ impl WorkspaceDocument {
 
         let mut document = match schema_version {
             1 => LegacyWorkspaceDocument::from_value(value)?.into_workspace_document(),
-            2..=5 => {
+            2..=6 => {
                 let mut document: Self = serde_json::from_value(value)
                     .map_err(|error| WorkspaceError::InvalidJson(error.to_string()))?;
                 document.schema_version = WORKSPACE_SCHEMA_VERSION;
@@ -849,6 +858,27 @@ impl WorkspaceDocument {
                     "duplicate workspace version id: {}",
                     scenario.version.id
                 ));
+            }
+        }
+
+        let mut shared_content = BTreeMap::new();
+        for card in std::iter::once(&self.current_state)
+            .chain(
+                self.planning_scenarios
+                    .iter()
+                    .map(|scenario| &scenario.version),
+            )
+            .flat_map(|version| &version.concepts)
+        {
+            if let Some(token) = &card.content_reference {
+                validate_required("card content reference", token)?;
+                let mut content = card.clone();
+                content.id = 0;
+                if let Some(previous) = shared_content.insert(token, content.clone())
+                    && previous != content
+                {
+                    return validation(format!("shared content {token} is inconsistent"));
+                }
             }
         }
 
@@ -1105,6 +1135,9 @@ impl WorkspaceDocument {
         let mut candidate = self.clone();
         let mut version = candidate.version(source_version_id)?.clone();
         let version_id = next_workspace_version_id(&title, &candidate);
+        for concept in &mut version.concepts {
+            concept.content_reference = None;
+        }
         version.id = version_id.clone();
         version.title = title;
         candidate.planning_scenarios.push(PlanningScenario {
@@ -1301,8 +1334,8 @@ impl WorkspaceDocument {
         )
     }
 
-    /// Imports independent card copies from a captured source view into a destination
-    /// view/version. This uses the captured content even if the source later changes.
+    /// Legacy paste default: share content across Views in the same Version,
+    /// otherwise import independent captured copies. The app uses an explicit mode.
     #[allow(clippy::too_many_arguments)]
     pub fn copy_concepts_from_lens(
         &mut self,
@@ -1313,6 +1346,39 @@ impl WorkspaceDocument {
         lens_id: &str,
         concept_ids: &[u32],
         world_delta: Point,
+    ) -> Result<Vec<u32>, WorkspaceError> {
+        let mode = if source.workspace_id == self.workspace_id
+            && source_version_id == version_id
+            && source_lens_id != lens_id
+        {
+            CardPasteMode::Reference
+        } else {
+            CardPasteMode::Copy
+        };
+        self.paste_concepts_from_lens(
+            source,
+            source_version_id,
+            source_lens_id,
+            version_id,
+            lens_id,
+            concept_ids,
+            world_delta,
+            mode,
+        )
+    }
+
+    /// Pastes independent captured copies or explicit live shared-content references.
+    #[allow(clippy::too_many_arguments)]
+    pub fn paste_concepts_from_lens(
+        &mut self,
+        source: &Self,
+        source_version_id: &str,
+        source_lens_id: &str,
+        version_id: &str,
+        lens_id: &str,
+        concept_ids: &[u32],
+        world_delta: Point,
+        mode: CardPasteMode,
     ) -> Result<Vec<u32>, WorkspaceError> {
         self.validate()?;
         if concept_ids.is_empty() {
@@ -1368,45 +1434,91 @@ impl WorkspaceDocument {
             })
             .collect::<Result<Vec<_>, _>>()?;
 
-        let share_content = source.workspace_id == self.workspace_id
-            && source_version_id == version_id
-            && source_lens_id != lens_id;
+        let reference = mode == CardPasteMode::Reference;
+        if reference && source.workspace_id != self.workspace_id {
+            return validation("References must belong to this workspace.".into());
+        }
+        let mut next_reference = 1_u64;
+        let mut prepared = Vec::new();
+        for captured in source_concepts {
+            let mut concept = if reference {
+                candidate.concept(source_version_id, captured.id)?.clone()
+            } else {
+                captured
+            };
+            if reference && concept.content_reference.is_none() {
+                let token = loop {
+                    let token = format!("content-{next_reference}");
+                    next_reference += 1;
+                    if !std::iter::once(&candidate.current_state)
+                        .chain(
+                            candidate
+                                .planning_scenarios
+                                .iter()
+                                .map(|scenario| &scenario.version),
+                        )
+                        .flat_map(|version| &version.concepts)
+                        .any(|card| card.content_reference.as_deref() == Some(&token))
+                    {
+                        break token;
+                    }
+                };
+                candidate
+                    .version_mut(source_version_id)?
+                    .concepts
+                    .iter_mut()
+                    .find(|card| card.id == concept.id)
+                    .unwrap()
+                    .content_reference = Some(token.clone());
+                concept.content_reference = Some(token);
+            } else if !reference {
+                concept.content_reference = None;
+            }
+            prepared.push(concept);
+        }
         let version = candidate.version_mut(version_id)?;
         let mut next_concept_id = version
             .concepts
             .iter()
-            .map(|concept| concept.id)
+            .map(|card| card.id)
             .max()
             .unwrap_or_default()
             .saturating_add(1);
-        let copied_concept_ids = source_concepts
-            .into_iter()
-            .map(|mut concept| {
-                if share_content
-                    && version
+        let mut copied_concept_ids = Vec::new();
+        for mut concept in prepared {
+            let existing = reference
+                .then(|| {
+                    version
                         .concepts
                         .iter()
-                        .any(|existing| existing.id == concept.id)
-                    && version
-                        .lenses
-                        .iter()
-                        .find(|lens| lens.id == lens_id)
-                        .is_some_and(|lens| {
-                            !lens
-                                .placements
-                                .iter()
-                                .any(|placement| placement.concept_id == concept.id)
-                        })
+                        .find(|existing| existing.content_reference == concept.content_reference)
+                        .map(|card| card.id)
+                })
+                .flatten();
+            if let Some(id) = existing {
+                if version
+                    .lenses
+                    .iter()
+                    .find(|lens| lens.id == lens_id)
+                    .is_some_and(|lens| {
+                        lens.placements
+                            .iter()
+                            .any(|placement| placement.concept_id == id)
+                    })
                 {
-                    return concept.id;
+                    return validation(
+                        "This View already contains that reference. Choose Copy for another card."
+                            .into(),
+                    );
                 }
+                copied_concept_ids.push(id);
+            } else {
                 concept.id = next_concept_id;
                 next_concept_id = next_concept_id.saturating_add(1);
-                let copied_id = concept.id;
+                copied_concept_ids.push(concept.id);
                 version.concepts.push(concept);
-                copied_id
-            })
-            .collect::<Vec<_>>();
+            }
+        }
 
         let lens = version
             .lenses
@@ -1631,6 +1743,37 @@ impl WorkspaceDocument {
             }
         }
 
+        // A card that spatially contains a visible card remains visual context
+        // at deeper semantic layers. This is presentation-only containment: it
+        // does not create a relationship or change either card's layer policy.
+        let parent_by_child = card_parent_ids(
+            candidates
+                .iter()
+                .map(|(concept_id, (_, bounds))| (*concept_id, *bounds)),
+        );
+        let visible_card_ids = presentation_by_concept_id
+            .keys()
+            .copied()
+            .collect::<Vec<_>>();
+        for visible_card_id in visible_card_ids {
+            let Some(child_opacity) = presentation_by_concept_id
+                .get(&visible_card_id)
+                .map(|(opacity, _)| *opacity)
+            else {
+                continue;
+            };
+            let mut child_id = visible_card_id;
+            while let Some(parent_id) = parent_by_child.get(&child_id).copied() {
+                let parent_bounds = candidates[&parent_id].1;
+                let parent_scale = assigned_card_scale(lens, parent_id, parent_bounds, &layers);
+                let parent_presentation = presentation_by_concept_id
+                    .entry(parent_id)
+                    .or_insert((child_opacity, parent_scale));
+                parent_presentation.0 = parent_presentation.0.max(child_opacity);
+                child_id = parent_id;
+            }
+        }
+
         let parent_by_child =
             card_parent_ids(candidates.iter().map(|(id, (_, bounds))| (*id, *bounds)));
         let mut relationship_endpoints_by_id = BTreeMap::new();
@@ -1665,7 +1808,10 @@ impl WorkspaceDocument {
                         id = *parent;
                     }
                 }
-                Some(id)
+                presentation_by_concept_id
+                    .get(&id)
+                    .is_some_and(|(opacity, _)| *opacity > 0.0)
+                    .then_some(id)
             };
             let Some(source_id) = endpoint(relationship.source_id) else {
                 continue;
@@ -1690,47 +1836,6 @@ impl WorkspaceDocument {
                 continue;
             }
             relationship_opacity_by_id.insert(relationship.id.as_str(), relationship_opacity);
-            if roll_up_relationships {
-                continue;
-            }
-            for concept_id in [relationship.source_id, relationship.target_id] {
-                let entry = presentation_by_concept_id.entry(concept_id).or_insert((
-                    relationship_opacity,
-                    assigned_card_scale(lens, concept_id, candidates[&concept_id].1, &layers),
-                ));
-                entry.0 = entry.0.max(relationship_opacity);
-            }
-        }
-
-        // A card that spatially contains a visible card remains visual context
-        // at deeper semantic layers. This is presentation-only containment: it
-        // does not create a relationship or change either card's layer policy.
-        let parent_by_child = card_parent_ids(
-            candidates
-                .iter()
-                .map(|(concept_id, (_, bounds))| (*concept_id, *bounds)),
-        );
-        let visible_card_ids = presentation_by_concept_id
-            .keys()
-            .copied()
-            .collect::<Vec<_>>();
-        for visible_card_id in visible_card_ids {
-            let Some(child_opacity) = presentation_by_concept_id
-                .get(&visible_card_id)
-                .map(|(opacity, _)| *opacity)
-            else {
-                continue;
-            };
-            let mut child_id = visible_card_id;
-            while let Some(parent_id) = parent_by_child.get(&child_id).copied() {
-                let parent_bounds = candidates[&parent_id].1;
-                let parent_scale = assigned_card_scale(lens, parent_id, parent_bounds, &layers);
-                let parent_presentation = presentation_by_concept_id
-                    .entry(parent_id)
-                    .or_insert((child_opacity, parent_scale));
-                parent_presentation.0 = parent_presentation.0.max(child_opacity);
-                child_id = parent_id;
-            }
         }
 
         let cards = candidates
@@ -3107,9 +3212,38 @@ impl WorkspaceDocument {
             concept.clone()
         };
 
-        candidate.validate()?;
+        candidate.synchronize_concept_content(version_id, concept_id)?;
         *self = candidate;
         Ok(edited_concept)
+    }
+
+    /// Propagates all content fields of an explicitly linked card atomically.
+    pub fn synchronize_concept_content(
+        &mut self,
+        version_id: &str,
+        concept_id: u32,
+    ) -> Result<(), WorkspaceError> {
+        let source = self.concept(version_id, concept_id)?.clone();
+        let mut candidate = self.clone();
+        if let Some(token) = &source.content_reference {
+            for version in std::iter::once(&mut candidate.current_state).chain(
+                candidate
+                    .planning_scenarios
+                    .iter_mut()
+                    .map(|scenario| &mut scenario.version),
+            ) {
+                for card in &mut version.concepts {
+                    if card.content_reference.as_ref() == Some(token) {
+                        let id = card.id;
+                        *card = source.clone();
+                        card.id = id;
+                    }
+                }
+            }
+        }
+        candidate.validate()?;
+        *self = candidate;
+        Ok(())
     }
 
     /// Removes one view reference while retaining the shared concept and its
@@ -3447,6 +3581,7 @@ impl WorkspaceDocument {
                 .unwrap_or(0)
                 .saturating_add(1);
             version.concepts.push(WorkspaceConcept {
+                content_reference: None,
                 id: concept_id,
                 type_id: type_id.to_string(),
                 title,
@@ -4861,6 +4996,7 @@ fn parse_hex_color(color: &str) -> Option<[f32; 4]> {
 
 fn concept(id: u32, type_id: &str, title: &str, summary: &str) -> WorkspaceConcept {
     WorkspaceConcept {
+        content_reference: None,
         id,
         type_id: type_id.to_string(),
         title: title.to_string(),
@@ -4971,6 +5107,7 @@ impl LegacyWorkspaceDocument {
             .concepts
             .into_iter()
             .map(|concept| WorkspaceConcept {
+                content_reference: None,
                 id: concept.id,
                 type_id: concept.kind.type_id().to_string(),
                 title: concept.title,
@@ -7920,6 +8057,165 @@ mod authored_layer_regressions {
     }
 
     #[test]
+    fn explicit_references_share_all_content_across_versions_and_copies_stay_independent() {
+        let mut document = WorkspaceDocument::sample();
+        let source = document.clone();
+        let source_lens = "organization-landscape";
+        let version = document
+            .create_version_from("current", "Linked destination".into())
+            .unwrap();
+        let original_placement = document.current_state.lenses[0].placements.clone();
+        let reference = document
+            .paste_concepts_from_lens(
+                &source,
+                "current",
+                source_lens,
+                &version,
+                source_lens,
+                &[5],
+                Point::new(1000.0, 800.0),
+                CardPasteMode::Reference,
+            )
+            .unwrap()[0];
+        assert_ne!(
+            reference, 5,
+            "an independently cloned card must not become a reference"
+        );
+        document
+            .edit_concept(&version, reference, "service", "Linked title".into())
+            .unwrap();
+        assert_eq!(
+            document.concept("current", 5).unwrap().title,
+            "Linked title"
+        );
+        assert_eq!(
+            document.concept(&version, 5).unwrap().title,
+            source.concept("current", 5).unwrap().title
+        );
+        let card = document
+            .version_mut(&version)
+            .unwrap()
+            .concepts
+            .iter_mut()
+            .find(|card| card.id == reference)
+            .unwrap();
+        card.summary = "Shared summary".into();
+        card.details = "Shared details".into();
+        card.attributes.insert("status".into(), "ready".into());
+        document
+            .synchronize_concept_content(&version, reference)
+            .unwrap();
+        let view = document
+            .create_empty_lens("current", "Linked view".into())
+            .unwrap();
+        let view_reference = document
+            .paste_concepts_from_lens(
+                &source,
+                "current",
+                source_lens,
+                "current",
+                &view,
+                &[5],
+                Point::default(),
+                CardPasteMode::Reference,
+            )
+            .unwrap()[0];
+        assert_eq!(view_reference, 5);
+        let copy = document
+            .paste_concepts_from_lens(
+                &source,
+                "current",
+                source_lens,
+                "current",
+                &view,
+                &[5],
+                Point::new(400.0, 0.0),
+                CardPasteMode::Copy,
+            )
+            .unwrap()[0];
+        assert_ne!(copy, 5);
+        assert!(
+            document
+                .concept("current", copy)
+                .unwrap()
+                .content_reference
+                .is_none()
+        );
+        document
+            .edit_concept("current", copy, "service", "Independent title".into())
+            .unwrap();
+        assert_eq!(
+            document.concept("current", 5).unwrap().title,
+            "Linked title"
+        );
+        assert_eq!(
+            document.current_state.lenses[0].placements,
+            original_placement
+        );
+        assert_eq!(
+            document.current_state.relationships,
+            source.current_state.relationships
+        );
+        let restored = WorkspaceDocument::parse_json(&document.to_pretty_json().unwrap()).unwrap();
+        assert_eq!(restored, document);
+        let mut shared = document.concept(&version, reference).unwrap().clone();
+        shared.id = 5;
+        assert_eq!(&shared, document.concept("current", 5).unwrap());
+        let unchanged = document.clone();
+        assert!(
+            document
+                .paste_concepts_from_lens(
+                    &source,
+                    "current",
+                    source_lens,
+                    "current",
+                    &view,
+                    &[5],
+                    Point::default(),
+                    CardPasteMode::Reference
+                )
+                .is_err()
+        );
+        assert_eq!(document, unchanged);
+        let clone = document
+            .create_version_from("current", "Independent snapshot".into())
+            .unwrap();
+        assert!(
+            document
+                .concept(&clone, 5)
+                .unwrap()
+                .content_reference
+                .is_none()
+        );
+        document.delete_concept("current", 5).unwrap();
+        assert_eq!(
+            document.concept(&version, reference).unwrap().title,
+            "Linked title"
+        );
+        document.validate().unwrap();
+    }
+
+    #[test]
+    fn schema_six_migrates_without_creating_links_and_invalid_shared_content_is_rejected() {
+        let mut legacy = serde_json::to_value(WorkspaceDocument::sample()).unwrap();
+        legacy["schema_version"] = 6.into();
+        let document = WorkspaceDocument::parse_json(&legacy.to_string()).unwrap();
+        assert_eq!(document.schema_version, 7);
+        assert!(
+            document
+                .current_state
+                .concepts
+                .iter()
+                .all(|card| card.content_reference.is_none())
+        );
+        let mut invalid = document.clone();
+        invalid.current_state.concepts[0].content_reference = Some("same-content".into());
+        invalid.current_state.concepts[1].content_reference = Some("same-content".into());
+        assert!(invalid.validate().is_err());
+        assert!(WorkspaceDocument::parse_json(&serde_json::to_string(&invalid).unwrap()).is_err());
+    }
+
+    #[test]
     fn insertion_at_a_chosen_slot_shifts_later_ranges_without_changing_widths() {
         let mut document = WorkspaceDocument::sample();
         let first = add_layer(&mut document, "First", 50.0, 100.0);
@@ -8112,7 +8408,14 @@ mod authored_layer_regressions {
         let normal = document
             .semantic_zoom_frame("current", "organization-landscape", 0.75)
             .unwrap();
-        assert!(normal.cards.iter().any(|card| card.card.id == 3));
+        assert_eq!(
+            normal.cards, frame.cards,
+            "roll-up must not alter card visibility"
+        );
+        assert!(
+            normal.relationships.is_empty(),
+            "Off disables the hidden-endpoint fallback"
+        );
         assert_eq!(document, unchanged);
         // A child fading in is retained at its own opacity, even when the
         // relationship has a fully visible endpoint in another layer.

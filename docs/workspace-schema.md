@@ -1,4 +1,4 @@
-# Workspace JSON Format: Version 6
+# Workspace JSON Format: Version 7
 
 This is a reference for the **currently implemented** saved format, checked
 against `WorkspaceDocument` and its validators in
@@ -42,7 +42,7 @@ non-whitespace characters.
 
 | Field | Type | Default / constraint |
 | --- | --- | --- |
-| `schema_version` | Unsigned integer | Required; current output is `6`. Supported input versions are described below. |
+| `schema_version` | Unsigned integer | Required; current output is `7`. Supported input versions are described below. |
 | `workspace_id` | String | Required, nonblank. |
 | `title` | String | Required, nonblank. |
 | `custom_types` | Array of custom types | Default `[]`; serialized even when empty. |
@@ -79,12 +79,24 @@ stores complete versions; it is not a diff, a Git branch, or a commit history.
 | Field | Type | Default / constraint |
 | --- | --- | --- |
 | `id` | Unsigned 32-bit integer | Required; unique within its version. |
+| `content_reference` | String | Optional, nonblank shared-content identity; omitted for independent cards. |
 | `type_id` | String | Required; one built-in or declared custom type. |
 | `title` | String | Required, nonblank. |
 | `summary` | String | Required; can be empty. |
 | `details` | String | Default `""`. |
 | `execution_mode` | String enum | Optional; omitted when absent. Only valid for type `process`. |
 | `attributes` | Object of string values | Default `{}`; serialized even when empty. |
+
+Cards with the same `content_reference` share all content fields across Views
+and Versions: type, title, summary, details, execution mode and attributes.
+Their IDs remain local to their Versions; placement, layer policy and
+relationships remain local. Linked content must match in every stored copy,
+otherwise validation rejects the document. The app assigns reference identities
+only when Reference is chosen during paste. Independent Copy and cloning a
+Version clear these identities on the new cards. Removing a card or Version
+does not remove other references. Existing versions 1–6 load without creating
+any cross-Version links. Version 7 output requires a reader that supports this
+field; older applications reject the newer schema version.
 
 The eight built-in type IDs are `organization`, `team`, `project`, `process`,
 `repository`, `service`, `environment`, and `access`. Valid execution modes
@@ -178,7 +190,7 @@ context. This optional field preserves compatibility with existing documents.
 | --- | --- | --- |
 | `id`, `title` | Strings | Required, nonblank; ID unique within the lens. |
 | `card_scale` | Number | Required, finite, greater than zero. |
-| `percent_settings` | Percent settings object | Optional in input; normalized during parsing. Present in normalized v6 output. |
+| `percent_settings` | Percent settings object | Optional in input; normalized during parsing. Present in normalized v7 output. |
 | `concept_ids` | Array of concept IDs | Default `[]`; omitted when empty. Authored base membership. |
 | `relationship_ids` | Array of relationship IDs | Default `[]`; omitted when empty. Authored base membership. |
 | `fade_in`, `fade_out` | Legacy range objects | Optional input compatibility fields; cleared during parsing. |
@@ -226,8 +238,8 @@ does not itself migrate an arbitrary in-memory legacy document.
 | Input | Current loader behavior |
 | --- | --- |
 | Version 1 | Uses the legacy model conversion, including views → lenses, concept kinds → type IDs, and responsibility-edge normalization. |
-| Versions 2–5 | Deserializes the compatible document shape, raises its version to 6, and normalizes presentation. |
-| Version 6 | Deserializes, normalizes presentation, and validates. |
+| Versions 2–6 | Deserializes the compatible document shape, raises its version to 7, and normalizes presentation. |
+| Version 7 | Deserializes, normalizes presentation, and validates. |
 | Other versions | Rejected. |
 
 For all accepted inputs, missing percent settings are derived from legacy fade
@@ -246,6 +258,6 @@ loading and reserialization.
 ## State Outside This Format
 
 Camera state, saved queries, undo/redo history, desktop preferences, and MCP
-connection configuration are not fields in the version 6 workspace document.
+connection configuration are not fields in the version 7 workspace document.
 A browser stores a serialized workspace in its origin's local storage; that
 storage location does not add new fields to this format.

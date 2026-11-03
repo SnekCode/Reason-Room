@@ -212,6 +212,57 @@ fictional manufacturing example in browser-local storage. Native interaction,
 Windows/Edge, deployed hosting and a broad drag/scroll platform matrix were
 not checked.
 
+## Validation Follow-up Repairs — 2026-11-02
+
+Following `c0cba5b`, implemented the remaining accepted validation changes:
+
+- Preferences is a fixed, centered modal on desktop and browser, above all
+  panels. Canvas/filter input and canvas keyboard shortcuts are blocked until
+  Done or Escape closes it. It no longer creates a separate native viewport.
+- Cross-View and cross-Version paste prompts at the pointer for Copy or
+  Reference. Copy creates independent captured content; Reference shares live
+  content while keeping placement, layer policy and relationships local.
+  A View cannot place the same reference twice; Copy remains available.
+- Paste centers the card/group at the pointer and tries nearby clear placements
+  within half its width/height using an elliptical limit. If none fits, a ghost
+  follows the pointer with Click to paste; clicking explicitly accepts even an
+  overlap. Escape cancels without saving. Collision checks include hidden cards.
+- Roll up relationships and View all use matching vertically stacked pill
+  switches. Roll-up defaults On. Both states preserve card visibility; Off
+  disables fallback to visible parents. This supersedes the earlier behavior
+  where relationships could force hidden cards to appear when roll-up was Off.
+
+Shared cross-Version content is persisted as optional `content_reference`
+identities in workspace format 7. Versions 1–6 migrate without introducing
+links. Validation rejects inconsistent linked content; copies and cloned
+Versions remain independent. Existing local save/backup/verification and
+undo/redo boundaries apply to the complete linked-content edit.
+
+On Apple Silicon macOS 27.0.1 with Rust 1.97.1, all 338 workspace tests passed
+(171 app, 115 canvas, 5 CLI, 47 session), with formatting, workspace build,
+strict Clippy, browser release build and documentation checks. Focused checks
+cover real egui pointer selection of Copy, Reference and Cancel; no save while
+choosing or positioning a ghost; explicit overlap confirmation and Escape
+cancellation; centered modal placement and background-input blocking; reference
+serialization, bidirectional edits, independent copies, source deletion and
+cloned Versions; atomic shared-content save and undo/redo across Versions;
+and unchanged card visibility with roll-up On/Off. Legacy CLI projection
+expectations now exclude cards previously forced visible by relationships.
+
+Launched the local browser through
+`INFINITE_NOTE_CANVAS_WEB_PORT=8081 ./start.sh --web` using the fictional
+manufacturing example. Visually confirmed matching stacked switches and
+unchanged visible-card count when toggling roll-up; fixed centered Preferences
+above filters, no movement on dragging, blocked filter clicks, and Escape
+closure; a colliding paste ghost with unchanged card count and Escape
+cancellation; and a pointer-positioned Copy/Reference popup in a blank View,
+followed by a successful Reference paste. Cross-Version content propagation
+and undo/redo were checked automatically rather than manually in the browser.
+Native OS clipboard integration, Windows/Edge, hosted deployment and broad
+platform visual checks remain unverified. Light-mode contrast, the longer
+layer sorting/insertion investigation and boundary text wrapping remain
+separate deferred validation items.
+
 ## Remaining Evidence and Known Limits
 
 - Browser `localStorage` failures are not fully handled. Test blocked storage,
