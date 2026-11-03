@@ -165,6 +165,22 @@ The documentation guard passed after updating the interaction guide.
 No Windows, Edge, deployed GitHub Pages, or native visual checks were performed
 for these changes in this entry.
 
+## Build Timestamp — 2026-11-02
+
+Following `2feeab0`, the top-right toolbar label embeds the app compilation time
+as `Built YYYY-MM-DD HH:MM:SS UTC` for native and browser artifacts. The host
+build script uses only the Rust standard library and watches app/workspace
+sources, manifests and the lockfile; reopening an unchanged artifact retains
+its timestamp. No timestamp depends on page-load time or the viewer's timezone.
+
+On this Apple Silicon Mac, formatting, all 328 workspace tests, the workspace
+build, strict Clippy, documentation guard and diff checks passed. The supported
+`./start.sh --web --build-only` completed. Generated native and Wasm build-script
+outputs both contained the formatted UTC timestamp. A separate build-script
+test passed epoch, day-boundary, leap-year and century cases (`rustc --edition=2024
+--test crates/app/build.rs`). No app, browser or server was launched; interactive
+placement and hosted-page verification remain for the user's evaluation.
+
 ## Remaining Evidence and Known Limits
 
 - Browser `localStorage` failures are not fully handled. Test blocked storage,

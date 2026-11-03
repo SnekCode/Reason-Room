@@ -4082,6 +4082,25 @@ impl InfiniteNoteCanvasApp {
     }
 
     fn top_bar(&mut self, ui: &mut egui::Ui) {
+        let built = concat!("Built ", env!("REASON_ROOM_BUILD_UTC"));
+        let font = FontId::proportional(ATLAS_SUPPORTING_TEXT_SIZE);
+        let width = ui
+            .painter()
+            .layout_no_wrap(built.to_string(), font.clone(), ATLAS_QUIET_GRAPHITE)
+            .size()
+            .x;
+        ui.horizontal_top(|ui| {
+            let controls_width = (ui.available_width() - width - ui.spacing().item_spacing.x).max(0.0);
+            ui.allocate_ui_with_layout(Vec2::new(controls_width, 0.0), Layout::top_down(Align::Min), |ui| {
+                ui.set_min_width(controls_width);
+                self.top_bar_controls(ui);
+            });
+            ui.label(egui::RichText::new(built).font(font).color(ATLAS_QUIET_GRAPHITE))
+                .on_hover_text("When this application artifact was compiled, in UTC. Reloading or opening it does not change this time.");
+        });
+    }
+
+    fn top_bar_controls(&mut self, ui: &mut egui::Ui) {
         let (can_undo, can_redo) = self
             .session()
             .map(|session| (session.can_undo(), session.can_redo()))

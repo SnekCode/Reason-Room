@@ -61,6 +61,8 @@ See [example authoring and maintenance](examples.md) for the MCP workflow.
   to layer filtering. The adjacent **O-I** checkbox rolls relationships from
   hidden child cards up to their nearest visible spatial parent. Children fade
   according to their own layer, and edges without a visible endpoint disappear.
+- The top-right **Built** timestamp identifies when the app was compiled, in UTC.
+  It stays fixed when you reload a hosted page or reopen a local build.
 - **Undo** and **Redo** apply to workspace edits in the current session.
   They are not a persistent version history and are not MCP tools.
 
