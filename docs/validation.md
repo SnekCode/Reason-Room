@@ -5,6 +5,24 @@ Update it when a meaningful platform or workflow check changes that scope.
 Use dates and identify the tested revision or change; do not claim a behavior
 was checked just because it exists in the source.
 
+## Webview Skill Download — 2026-11-02
+
+On this Apple Silicon Mac, the supported `./start.sh --web` launcher built
+and served the application on loopback port 8081 (8080 was already in use).
+In the in-app browser, the top bar displayed **Download usage skill**;
+clicking it downloaded `reason-room-skill.zip`. The downloaded ZIP passed CRC
+verification and contained byte-for-byte copies of every skill file under
+one `reason-room/` folder, including setup, browser MCP workflow, tool
+reference, agent metadata, and license. Repeated packaging produced identical
+archive bytes. `./start.sh --web --build-only` also succeeded.
+
+Formatting, workspace tests, workspace build, strict Clippy, documentation
+guidance checks, and skill validation passed. The button and bridge are
+compiled only for the browser target. No native UI interaction, hosted-site
+download, alternate browser, or new end-to-end MCP refresh check was performed
+for this change; the MCP workflow instructions reflect the existing local-file
+bridge and server behavior.
+
 ## Recorded Baseline: 2026-10-31
 
 The local setup and MCP skill checks below were completed before or at

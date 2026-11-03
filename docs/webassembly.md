@@ -21,6 +21,12 @@ JavaScript bindings, copies the page and license, and serves the output on
 Use `INFINITE_NOTE_CANVAS_WEB_PORT=8081 ./start.sh --web` for another port.
 Stop the local server with Ctrl-C.
 
+The web-only **Download usage skill** button downloads `reason-room-skill.zip`.
+Extract the complete `reason-room/` folder into your agent's skill directory.
+The bundle includes installation, MCP tool usage, and the
+[webview MCP workflow](../skills/reason-room/references/setup.md#use-mcp-with-the-webview).
+MCP still requires a separately configured local server and a selected JSON file.
+
 ## Browser File Access
 
 | File menu command | Behavior |
@@ -67,7 +73,7 @@ Build without starting a server:
 ./start.sh --web --build-only
 ```
 
-Python is not needed for this mode. The generated directory is
+Python 3 packages the downloadable skill in this mode too. The generated directory is
 `target/web-wasm/`:
 
 | File | Purpose |
@@ -76,6 +82,7 @@ Python is not needed for this mode. The generated directory is
 | `infinite_note_canvas.js` | Generated JavaScript bindings. |
 | `infinite_note_canvas_bg.wasm` | Compiled Rust application. |
 | `LICENSE` | Project Apache 2.0 license. |
+| `reason-room-skill.zip` | Complete installable usage skill, including webview MCP guidance. |
 
 The legacy asset names match the page's imports. Keep the generated files
 together. Imports are relative, allowing both a site root and a project

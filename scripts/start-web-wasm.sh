@@ -64,7 +64,7 @@ if [[ "$(wasm-bindgen --version)" != "wasm-bindgen $wasm_bindgen_version" ]]; th
     "Install wasm-bindgen-cli $wasm_bindgen_version, then run ./start.sh --web again."
 fi
 
-if [[ "$build_only" == false ]] && ! command -v python3 >/dev/null 2>&1; then
+if ! command -v python3 >/dev/null 2>&1; then
   fail \
     'Required command is unavailable: python3.' \
     'Install Python 3, then run ./start.sh --web again.'
@@ -88,6 +88,7 @@ wasm-bindgen \
   "$wasm_artifact"
 cp "$repository_root/web/index.html" "$web_output/index.html"
 cp "$repository_root/LICENSE" "$web_output/LICENSE"
+python3 "$repository_root/scripts/package-reason-room-skill.py" "$web_output/reason-room-skill.zip"
 
 if [[ "$build_only" == true ]]; then
   printf 'Static site built at: %s\n' "$web_output"

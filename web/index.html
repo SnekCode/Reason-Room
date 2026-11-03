@@ -51,6 +51,16 @@
       let application;
       let watchedWorkspace;
 
+      window.infiniteNoteCanvasDownloadSkill = () => {
+        const link = document.createElement("a");
+        link.href = new URL("./reason-room-skill.zip", import.meta.url).href;
+        link.download = "reason-room-skill.zip";
+        link.hidden = true;
+        document.body.append(link);
+        link.click();
+        link.remove();
+      };
+
       window.infiniteNoteCanvasDownload = (source, fileName) => {
         const blob = new Blob([source], { type: "application/json" });
         const url = URL.createObjectURL(blob);

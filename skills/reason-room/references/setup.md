@@ -65,6 +65,10 @@ an existing read-only inspection work.
 
 ## Install the Skill Folder
 
+In the webview, **Download usage skill** downloads `reason-room-skill.zip`.
+Extract it to get the complete `reason-room/` folder, then install that folder
+as described below. The ZIP includes this setup guide and the MCP reference.
+
 The portable bundle is the `reason-room/` folder containing `SKILL.md`,
 `agents/openai.yaml`, `references/`, and `LICENSE`. Keep those together.
 
@@ -92,6 +96,34 @@ Examples:
 - “Use $reason-room to explain the outgoing dependencies of the Billing API.”
 - “Use $reason-room to rename the selected service card and retain its details.”
 - “Use $reason-room to check what is visible at 25% zoom.”
+
+## Use MCP with the Webview
+
+The webview runs the browser application. Its hosted page does not expose an
+MCP endpoint: configure the local stdio server above on the machine holding
+the workspace JSON and running the agent's MCP client. The server cannot
+access browser storage or control the page.
+
+1. For an existing browser canvas, use **File > Save** to download its JSON.
+   Keep the file in a writable folder outside the source checkout. If the
+   intended canvas is already a local JSON file, use that file instead.
+2. Configure MCP with that file's absolute path. Discover the tools and call
+   `workspace_overview` to confirm `workspace_path` and `write_enabled` before
+   applying requested changes. Enable `--allow-write` only for requested edits.
+3. In the webview, use **File > Open and refresh from file...** and select the
+   same JSON file. On browsers supporting file handles, the app polls the
+   selected file and defers incoming changes while editing is active. After
+   each MCP edit, read back the affected Lens to verify the saved result.
+4. If the picker falls back to ordinary **Open canvas...**, it imports a copy
+   without live refresh. Reopen the file after MCP edits to see the result.
+   Re-importing replaces the active browser canvas; save browser work first.
+
+Browser **Save** and **Save As...** download copies; they do not write back to
+the watched file. Avoid simultaneous browser and agent edits. To hand browser
+edits back to MCP, save a copy, deliberately replace the selected local file
+or configure MCP to use the new path, then confirm the overview again. Do not
+assume that a browser download overwrote the MCP workspace: browsers may add
+a filename suffix. Browser-local storage and a local MCP file are separate.
 
 Official setup references: [Codex skills](https://developers.openai.com/codex/skills/)
 and [Codex MCP configuration](https://developers.openai.com/codex/mcp/).

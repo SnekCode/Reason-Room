@@ -81,6 +81,8 @@ In the browser, ordinary Open imports a separate browser-local copy; external
 MCP writes appear only through a supported live-refresh file connection or
 another explicit import. Do not claim that changing a local JSON file updated
 a hosted browser session.
+For a webview or browser canvas, read the [browser MCP workflow](references/setup.md#use-mcp-with-the-webview)
+before connecting a file or reporting that edits are visible.
 
 Report the selected workspace and view, the requested findings or verified
 changes, and any remaining limitations. Do not promise MCP features the server
