@@ -178,6 +178,41 @@ impl WorkspaceSession {
         self.stage_document_mutation(document, self.selection_ids().to_vec())
     }
 
+    pub fn stage_create_semantic_zoom_layer_at(
+        &self,
+        title: String,
+        settings: SemanticZoomLayerPercentSettings,
+        index: usize,
+    ) -> Result<StagedWorkspaceMutation, WorkspaceStageError> {
+        let mut document = self.document().clone();
+        let layer_id = document
+            .create_semantic_zoom_layer(
+                self.active_version_id(),
+                self.active_lens_id(),
+                title.clone(),
+            )
+            .map_err(WorkspaceStageError::Mutation)?;
+        document
+            .update_semantic_zoom_layer_percent_settings(
+                self.active_version_id(),
+                self.active_lens_id(),
+                &layer_id,
+                title,
+                settings,
+                1.0,
+            )
+            .map_err(WorkspaceStageError::Mutation)?;
+        document
+            .insert_semantic_zoom_layer(
+                self.active_version_id(),
+                self.active_lens_id(),
+                &layer_id,
+                index,
+            )
+            .map_err(WorkspaceStageError::Mutation)?;
+        self.stage_document_mutation(document, self.selection_ids().to_vec())
+    }
+
     /// Creates the first semantic zoom layer and assigns the active Lens's
     /// existing cards and relationships to it as their base level.
     pub fn stage_create_semantic_zoom_base_layer(
@@ -203,8 +238,10 @@ impl WorkspaceSession {
             .iter()
             .map(|placement| placement.concept_id)
             .collect::<Vec<_>>();
-        let relationship_ids = version
+        let relationship_ids = lens
             .relationships
+            .as_deref()
+            .unwrap_or(&version.relationships)
             .iter()
             .map(|relationship| relationship.id.clone())
             .collect::<Vec<_>>();
@@ -418,6 +455,23 @@ impl WorkspaceSession {
 
     /// Stages a Lens-local card resize. It does not change the shared concept
     /// or relationships and participates in normal local undo and redo.
+    pub fn stage_shift_concept_layer(
+        &self,
+        concept_id: u32,
+        deeper: bool,
+    ) -> Result<StagedWorkspaceMutation, WorkspaceStageError> {
+        let mut document = self.document().clone();
+        document
+            .shift_concept_layer(
+                self.active_version_id(),
+                self.active_lens_id(),
+                concept_id,
+                deeper,
+            )
+            .map_err(WorkspaceStageError::Mutation)?;
+        self.stage_document_mutation(document, vec![concept_id])
+    }
+
     pub fn stage_resize_active_concept(
         &self,
         concept_id: u32,
@@ -435,9 +489,36 @@ impl WorkspaceSession {
         self.stage_document_mutation(document, vec![concept_id])
     }
 
-    /// Stages removal of one concept, its active-Lens placements, and its
-    /// incident relationships. The domain model validates the complete
-    /// deletion before the candidate can be saved.
+    /// Removes a card reference and incident relationships from the active view.
+    /// Shared concept content and all other views remain intact.
+    pub fn stage_remove_active_concept_reference(
+        &self,
+        concept_id: u32,
+    ) -> Result<StagedWorkspaceMutation, WorkspaceStageError> {
+        self.stage_remove_active_concept_references(&[concept_id])
+    }
+
+    /// Removes several active-view references as one atomic workspace mutation.
+    /// The resident session is unchanged if any requested reference is absent.
+    pub fn stage_remove_active_concept_references(
+        &self,
+        concept_ids: &[u32],
+    ) -> Result<StagedWorkspaceMutation, WorkspaceStageError> {
+        let mut document = self.document().clone();
+        for concept_id in concept_ids.iter().copied().collect::<BTreeSet<_>>() {
+            document
+                .remove_concept_from_lens(
+                    self.active_version_id(),
+                    self.active_lens_id(),
+                    concept_id,
+                )
+                .map_err(WorkspaceStageError::Mutation)?;
+        }
+        self.stage_document_mutation(document, Vec::new())
+    }
+
+    /// Permanently removes concepts and their incident records from every view
+    /// in the active version. External concept deletion retains this explicit contract.
     pub fn stage_delete_active_concept(
         &self,
         concept_id: u32,
@@ -445,11 +526,7 @@ impl WorkspaceSession {
         self.stage_delete_active_concepts(&[concept_id])
     }
 
-    /// Stages removal of several concepts as one atomic workspace mutation.
-    ///
-    /// Each deleted concept also removes its active-Lens placements and
-    /// incident relationships. The resident session is unchanged if any
-    /// requested concept cannot be removed.
+    /// Permanently removes multiple concepts as a single history entry.
     pub fn stage_delete_active_concepts(
         &self,
         concept_ids: &[u32],
@@ -590,6 +667,23 @@ impl WorkspaceSession {
         self.stage_document_mutation(document, self.selection_ids().to_vec())
     }
 
+    pub fn stage_set_visual_boundary_layer(
+        &self,
+        boundary_id: &str,
+        layer_id: Option<String>,
+    ) -> Result<StagedWorkspaceMutation, WorkspaceStageError> {
+        let mut document = self.document().clone();
+        document
+            .set_visual_boundary_layer(
+                self.active_version_id(),
+                self.active_lens_id(),
+                boundary_id,
+                layer_id,
+            )
+            .map_err(WorkspaceStageError::Mutation)?;
+        self.stage_document_mutation(document, self.selection_ids().to_vec())
+    }
+
     /// Stages a visual-boundary move in the active Lens. Fully enclosed cards
     /// and nested boundaries travel with it; graph relationships do not change.
     pub fn stage_move_visual_boundary(
@@ -649,8 +743,9 @@ impl WorkspaceSession {
     ) -> Result<StagedWorkspaceMutation, WorkspaceStageError> {
         let mut document = self.document().clone();
         document
-            .link_concepts(
+            .link_concepts_in_lens(
                 self.active_version_id(),
+                self.active_lens_id(),
                 source_id,
                 target_id,
                 relationship_kind,
@@ -668,7 +763,12 @@ impl WorkspaceSession {
     ) -> Result<StagedWorkspaceMutation, WorkspaceStageError> {
         let mut document = self.document().clone();
         document
-            .change_relationship_kind(self.active_version_id(), relationship_id, relationship_kind)
+            .change_relationship_kind_in_lens(
+                self.active_version_id(),
+                self.active_lens_id(),
+                relationship_id,
+                relationship_kind,
+            )
             .map_err(WorkspaceStageError::Mutation)?;
 
         self.stage_document_mutation(document, self.selection_ids().to_vec())
@@ -681,7 +781,11 @@ impl WorkspaceSession {
     ) -> Result<StagedWorkspaceMutation, WorkspaceStageError> {
         let mut document = self.document().clone();
         document
-            .remove_relationship(self.active_version_id(), relationship_id)
+            .remove_relationship_in_lens(
+                self.active_version_id(),
+                self.active_lens_id(),
+                relationship_id,
+            )
             .map_err(WorkspaceStageError::Mutation)?;
 
         self.stage_document_mutation(document, self.selection_ids().to_vec())
@@ -847,6 +951,30 @@ impl WorkspaceSession {
             )
             .map_err(WorkspaceStageError::Mutation)?;
         self.stage_document_mutation(document, copied_concept_ids)
+    }
+
+    /// Pastes captured card content into the active view, including across versions.
+    pub fn stage_paste_concepts(
+        &self,
+        source: &WorkspaceDocument,
+        source_version_id: &str,
+        source_lens_id: &str,
+        concept_ids: &[u32],
+        world_delta: Point,
+    ) -> Result<StagedWorkspaceMutation, WorkspaceStageError> {
+        let mut document = self.document().clone();
+        let ids = document
+            .copy_concepts_from_lens(
+                source,
+                source_version_id,
+                source_lens_id,
+                self.active_version_id(),
+                self.active_lens_id(),
+                concept_ids,
+                world_delta,
+            )
+            .map_err(WorkspaceStageError::Mutation)?;
+        self.stage_document_mutation(document, ids)
     }
 
     /// Stages selection of a version and that version's default Lens.
@@ -1146,36 +1274,52 @@ mod tests {
     }
 
     #[test]
-    fn concept_deletion_stages_incident_records_and_restores_with_undo() {
+    fn reference_removal_preserves_shared_content_and_restores_with_undo() {
         let workspace = TemporaryWorkspace::new("delete-concept", &sample_source());
         let mut session = load_sample_session(workspace.path.clone());
         let before = WorkspaceDocument::parse_json(&workspace.read_source()).unwrap();
         let deleted_concept_id = 5;
 
         let staged = session
-            .stage_delete_active_concept(deleted_concept_id)
+            .stage_remove_active_concept_reference(deleted_concept_id)
             .unwrap();
         assert_eq!(workspace.read_source(), sample_source());
         session.commit(staged).unwrap();
 
         let after_delete = WorkspaceDocument::parse_json(&workspace.read_source()).unwrap();
-        assert!(
-            after_delete
-                .current_state
-                .concepts
-                .iter()
-                .all(|concept| concept.id != deleted_concept_id)
+        assert_eq!(
+            after_delete.current_state.concepts,
+            before.current_state.concepts
         );
-        assert!(
-            after_delete
-                .current_state
-                .relationships
-                .iter()
-                .all(|relationship| {
-                    relationship.source_id != deleted_concept_id
-                        && relationship.target_id != deleted_concept_id
-                })
+        assert_eq!(
+            after_delete.current_state.relationships,
+            before.current_state.relationships
         );
+        let active_lens = after_delete
+            .current_state
+            .lenses
+            .iter()
+            .find(|lens| lens.id == session.active_lens_id())
+            .unwrap();
+        assert!(
+            active_lens
+                .placements
+                .iter()
+                .all(|placement| placement.concept_id != deleted_concept_id)
+        );
+        for lens in &after_delete.current_state.lenses {
+            if lens.id != session.active_lens_id() {
+                assert_eq!(
+                    lens,
+                    before
+                        .current_state
+                        .lenses
+                        .iter()
+                        .find(|other| other.id == lens.id)
+                        .unwrap()
+                );
+            }
+        }
         assert!(session.selection_ids().is_empty());
 
         session.commit(session.stage_undo().unwrap()).unwrap();
@@ -1186,14 +1330,14 @@ mod tests {
     }
 
     #[test]
-    fn multiple_concept_deletion_is_atomic_and_records_one_history_entry() {
+    fn multiple_reference_removal_is_atomic_and_records_one_history_entry() {
         let workspace = TemporaryWorkspace::new("delete-concepts", &sample_source());
         let mut session = load_sample_session(workspace.path.clone());
         let before_source = workspace.read_source();
         let deleted_concept_ids = [5, 7];
 
         let staged = session
-            .stage_delete_active_concepts(&deleted_concept_ids)
+            .stage_remove_active_concept_references(&deleted_concept_ids)
             .unwrap();
 
         assert_eq!(workspace.read_source(), before_source);
@@ -1209,22 +1353,25 @@ mod tests {
         assert_eq!(session.undo_depth(), 1);
         assert!(session.selection_ids().is_empty());
         let deleted_document = WorkspaceDocument::parse_json(&workspace.read_source()).unwrap();
-        assert!(
-            deleted_document
-                .current_state
-                .concepts
-                .iter()
-                .all(|concept| !deleted_concept_ids.contains(&concept.id))
+        let before = WorkspaceDocument::parse_json(&before_source).unwrap();
+        assert_eq!(
+            deleted_document.current_state.concepts,
+            before.current_state.concepts
+        );
+        assert_eq!(
+            deleted_document.current_state.relationships,
+            before.current_state.relationships
         );
         assert!(
             deleted_document
                 .current_state
-                .relationships
+                .lenses
                 .iter()
-                .all(|relationship| {
-                    !deleted_concept_ids.contains(&relationship.source_id)
-                        && !deleted_concept_ids.contains(&relationship.target_id)
-                })
+                .find(|lens| lens.id == session.active_lens_id())
+                .unwrap()
+                .placements
+                .iter()
+                .all(|placement| !deleted_concept_ids.contains(&placement.concept_id))
         );
 
         session.commit(session.stage_undo().unwrap()).unwrap();
@@ -1482,9 +1629,8 @@ mod tests {
         assert!(
             session
                 .document()
-                .version("current")
+                .relationships_in_lens("current", "organization-landscape")
                 .unwrap()
-                .relationships
                 .iter()
                 .any(|relationship| relationship.id == relationship_id)
         );
@@ -1496,9 +1642,8 @@ mod tests {
         assert_eq!(
             session
                 .document()
-                .version("current")
+                .relationships_in_lens("current", "organization-landscape")
                 .unwrap()
-                .relationships
                 .iter()
                 .find(|relationship| relationship.id == relationship_id)
                 .unwrap()
@@ -1511,9 +1656,8 @@ mod tests {
         assert!(
             !session
                 .document()
-                .version("current")
+                .relationships_in_lens("current", "organization-landscape")
                 .unwrap()
-                .relationships
                 .iter()
                 .any(|relationship| relationship.id == relationship_id)
         );

@@ -135,6 +135,17 @@ const NATIVE_SAVE_CANVAS_MENU_ITEM_ID: &str = "save-canvas";
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 const NATIVE_SAVE_AS_CANVAS_MENU_ITEM_ID: &str = "save-as-canvas";
 
+// The chrome and canvas use a fixed dark palette. Match egui's text and
+// editable controls to those surfaces even when the operating system is light.
+fn atlas_visuals() -> egui::Visuals {
+    let mut visuals = egui::Visuals::dark();
+    visuals.override_text_color = Some(ATLAS_PAPER_SIGNAL);
+    visuals.panel_fill = ATLAS_GROUND;
+    visuals.window_fill = ATLAS_SURVEY_SLATE;
+    visuals.extreme_bg_color = ATLAS_GROUND;
+    visuals
+}
+
 fn settings_window_title() -> &'static str {
     if cfg!(target_os = "macos") {
         "Preferences"
@@ -610,6 +621,9 @@ struct InfiniteNoteCanvasApp {
     dialog: Option<EditorDialog>,
     inspector_draft: Option<ConceptInspectorDraft>,
     card_clipboard: Option<CardClipboard>,
+    publish_card_clipboard: bool,
+    last_canvas_pointer: Option<Point>,
+    last_canvas_viewport: Option<Rect>,
     pending_concept_name_focus_id: Option<u32>,
     pending_creation_name_focus: Option<CreationNameFocus>,
     inspector_collapsed: bool,
@@ -632,6 +646,7 @@ struct InfiniteNoteCanvasApp {
     #[cfg(any(target_os = "macos", target_os = "windows"))]
     _native_application_menu: Option<NativeApplicationMenu>,
     show_all_cards: bool,
+    roll_up_relationships: bool,
     card_creation_draft: ConceptEditorDraft,
     boundary_creation_draft: BoundaryEditorDraft,
     layer_creation_title: String,
@@ -640,6 +655,7 @@ struct InfiniteNoteCanvasApp {
     layer_creation_fade_percent: f32,
     layer_cross_section_drafts: Vec<LayerRangeDraft>,
     layer_cross_section_creating: bool,
+    layer_creation_index: usize,
     /// Temporary canvas controls. These never change a saved Lens filter.
     canvas_search_query: String,
     canvas_search_match_index: usize,
@@ -655,6 +671,7 @@ struct InfiniteNoteCanvasApp {
     boundary_inspector_draft: Option<BoundaryInspectorDraft>,
     hover_target: Option<CanvasHoverTarget>,
     lens_cameras: HashMap<LensViewportKey, Camera>,
+    lens_canvas_controls: HashMap<LensViewportKey, LensCanvasControls>,
     canvas_viewport_size: Point,
     fit_example_on_next_frame: bool,
     relationship_route_cache: RefCell<RelationshipRouteCache>,
@@ -763,6 +780,7 @@ struct CanvasContextMenuState {
 #[derive(Clone, Debug, PartialEq)]
 enum CanvasContextMenuAction {
     InspectCard(u32),
+    ShiftCardLayer(u32, bool),
     CopyCard(u32),
     DeleteCard(u32),
     InspectBoundary(String),
@@ -1079,6 +1097,11 @@ enum EditorDialog {
         lens_id: String,
         draft: WorkspaceTitleDraft,
     },
+    ChooseRelationshipKind {
+        source_id: u32,
+        target_id: u32,
+        position: Pos2,
+    },
     ConfirmRelationshipRemoval {
         relationship: RelationshipView,
     },
@@ -1135,7 +1158,7 @@ struct CardClipboard {
     version_id: String,
     lens_id: String,
     concept_ids: Vec<u32>,
-    paste_count: u32,
+    source: WorkspaceDocument,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -1203,6 +1226,15 @@ struct ConceptInspectorDraft {
     assertion_error: Option<String>,
 }
 
+#[derive(Clone, Debug, Default)]
+struct LensCanvasControls {
+    search_query: String,
+    search_match_index: usize,
+    type_filter_ids: BTreeSet<String>,
+    show_all_cards: bool,
+    roll_up_relationships: bool,
+}
+
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 struct LensViewportKey {
     version_id: String,
@@ -1222,8 +1254,8 @@ impl InfiniteNoteCanvasApp {
         // supported desktop targets. Do not allow egui to embed it in canvas.
         #[cfg(not(target_arch = "wasm32"))]
         creation_context.egui_ctx.set_embed_viewports(false);
-        #[cfg(target_arch = "wasm32")]
-        let _ = creation_context;
+        creation_context.egui_ctx.set_theme(egui::Theme::Dark);
+        creation_context.egui_ctx.set_visuals(atlas_visuals());
 
         let stored_preferences: StoredPreferences = creation_context
             .storage
@@ -1281,6 +1313,9 @@ impl InfiniteNoteCanvasApp {
             dialog: None,
             inspector_draft: None,
             card_clipboard: None,
+            publish_card_clipboard: false,
+            last_canvas_pointer: None,
+            last_canvas_viewport: None,
             pending_concept_name_focus_id: None,
             pending_creation_name_focus: None,
             inspector_collapsed: false,
@@ -1305,6 +1340,7 @@ impl InfiniteNoteCanvasApp {
             #[cfg(any(target_os = "macos", target_os = "windows"))]
             _native_application_menu: native_application_menu,
             show_all_cards: false,
+            roll_up_relationships: false,
             card_creation_draft: ConceptEditorDraft {
                 title: String::new(),
                 type_id: None,
@@ -1320,6 +1356,7 @@ impl InfiniteNoteCanvasApp {
             layer_creation_fade_percent: 10.0,
             layer_cross_section_drafts: Vec::new(),
             layer_cross_section_creating: false,
+            layer_creation_index: 0,
             canvas_search_query: String::new(),
             canvas_search_match_index: 0,
             canvas_type_filter_ids: BTreeSet::new(),
@@ -1339,6 +1376,7 @@ impl InfiniteNoteCanvasApp {
             boundary_inspector_draft: None,
             hover_target: None,
             lens_cameras: HashMap::new(),
+            lens_canvas_controls: HashMap::new(),
             canvas_viewport_size: Point::default(),
             fit_example_on_next_frame: false,
             relationship_route_cache: RefCell::default(),
@@ -1636,8 +1674,27 @@ impl InfiniteNoteCanvasApp {
         }
         match consume_card_clipboard_command(ctx) {
             Some(CardClipboardCommand::Copy) => self.copy_selected_cards(),
-            Some(CardClipboardCommand::Paste) => self.paste_cards(),
+            Some(CardClipboardCommand::Paste) => {
+                let position = self.last_canvas_viewport.and_then(|viewport| {
+                    ctx.input(|input| input.pointer.hover_pos())
+                        .filter(|position| viewport.contains(*position))
+                        .map(|position| {
+                            self.interaction
+                                .camera()
+                                .screen_to_world(point_in_viewport(position, viewport))
+                        })
+                });
+                self.paste_cards_at(position.or(self.last_canvas_pointer));
+            }
             None => {}
+        }
+    }
+
+    fn publish_pending_card_clipboard(&mut self, ctx: &egui::Context) {
+        if self.publish_card_clipboard {
+            // Nonempty clipboard content enables semantic Paste events in platform integrations.
+            ctx.copy_text("Reason Room cards".to_string());
+            self.publish_card_clipboard = false;
         }
     }
 
@@ -2038,6 +2095,17 @@ impl InfiniteNoteCanvasApp {
     }
 
     fn active_visual_boundaries(&self) -> Vec<VisualBoundary> {
+        let visible_layers: BTreeSet<_> = self
+            .semantic_zoom_frame()
+            .map(|frame| {
+                frame
+                    .layers
+                    .into_iter()
+                    .filter(|layer| layer.opacity > 0.0)
+                    .map(|layer| layer.id)
+                    .collect()
+            })
+            .unwrap_or_default();
         self.session()
             .and_then(|session| {
                 session
@@ -2051,7 +2119,19 @@ impl InfiniteNoteCanvasApp {
                             .find(|lens| lens.id == session.active_lens_id())
                     })
             })
-            .map(|lens| lens.visual_boundaries.clone())
+            .map(|lens| {
+                lens.visual_boundaries
+                    .iter()
+                    .filter(|boundary| {
+                        !self.semantic_layer_filtering_is_active()
+                            || boundary
+                                .layer_id
+                                .as_ref()
+                                .is_none_or(|id| visible_layers.contains(id))
+                    })
+                    .cloned()
+                    .collect()
+            })
             .unwrap_or_default()
     }
 
@@ -2140,8 +2220,9 @@ impl InfiniteNoteCanvasApp {
             version_id: session.active_version_id().to_string(),
             lens_id: session.active_lens_id().to_string(),
             concept_ids: concept_ids.clone(),
-            paste_count: 0,
+            source: session.document().clone(),
         });
+        self.publish_card_clipboard = true;
         self.show_notice(
             "CARDS COPIED",
             format!(
@@ -2154,59 +2235,123 @@ impl InfiniteNoteCanvasApp {
     }
 
     fn can_paste_cards(&self) -> bool {
-        let Some(clipboard) = self.card_clipboard.as_ref() else {
-            return false;
-        };
-        self.session().is_some_and(|session| {
-            session.active_version_id() == clipboard.version_id
-                && session.active_lens_id() == clipboard.lens_id
-        })
+        self.card_clipboard.is_some() && self.session().is_some()
     }
 
     fn paste_cards(&mut self) {
-        let Some(clipboard) = self.card_clipboard.as_ref() else {
+        self.paste_cards_at(self.last_canvas_pointer);
+    }
+
+    fn paste_cards_at(&mut self, world_position: Option<Point>) {
+        let Some(clipboard) = self.card_clipboard.clone() else {
             self.set_failure("CARDS NOT PASTED", "Copy one or more cards first.");
             return;
         };
-        let Some(session) = self.session() else {
-            self.set_failure("CARDS NOT PASTED", "The workspace is unavailable.");
-            return;
-        };
-        if session.active_version_id() != clipboard.version_id
-            || session.active_lens_id() != clipboard.lens_id
-        {
-            self.set_failure(
-                "CARDS NOT PASTED",
-                "Paste cards in the same version and view where they were copied.",
-            );
-            return;
-        }
-        let concept_ids = clipboard.concept_ids.clone();
-        let paste_count = clipboard.paste_count.saturating_add(1);
-        let offset = Point::new(
-            CARD_PASTE_OFFSET * paste_count as f32,
-            CARD_PASTE_OFFSET * paste_count as f32,
-        );
-        let staged = self.stage_action(|session| {
+        let preview = self.stage_action(|session| {
             session
-                .stage_duplicate_active_concepts(&concept_ids, offset)
+                .stage_paste_concepts(
+                    &clipboard.source,
+                    &clipboard.version_id,
+                    &clipboard.lens_id,
+                    &clipboard.concept_ids,
+                    Point::default(),
+                )
                 .map_err(|error| error.to_string())
         });
-        if staged.is_ok()
-            && let Some(clipboard) = self.card_clipboard.as_mut()
-        {
-            clipboard.paste_count = paste_count;
-        }
-        self.commit_staged_action(
-            staged,
-            None,
-            false,
-            format!(
-                "Pasted {} card{} without relationships.",
-                concept_ids.len(),
-                if concept_ids.len() == 1 { "" } else { "s" }
-            ),
+        let preview = match preview {
+            Ok(preview) => preview,
+            Err(error) => {
+                self.commit_staged_action(Err(error), None, false, "Cards not pasted.");
+                return;
+            }
+        };
+        let camera_scale = self.interaction.camera().scale;
+        let projected = paste_card_visual_bounds(
+            preview.document(),
+            preview.active_version_id(),
+            preview.active_lens_id(),
+            camera_scale,
+            self.show_all_cards,
         );
+        let source_bounds = preview
+            .selection_ids()
+            .iter()
+            .filter_map(|id| projected.get(id).copied())
+            .collect::<Vec<_>>();
+        let destination_bounds = self
+            .session()
+            .map(|session| {
+                paste_card_visual_bounds(
+                    session.document(),
+                    session.active_version_id(),
+                    session.active_lens_id(),
+                    camera_scale,
+                    self.show_all_cards,
+                )
+                .into_values()
+                .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+        let anchor = world_position.unwrap_or_else(|| {
+            self.interaction
+                .camera()
+                .screen_to_world(self.canvas_viewport_size * 0.5)
+        });
+        let offset = card_paste_delta(&source_bounds, &destination_bounds, anchor);
+        let staged = self.stage_action(|session| {
+            session
+                .stage_paste_concepts(
+                    &clipboard.source,
+                    &clipboard.version_id,
+                    &clipboard.lens_id,
+                    &clipboard.concept_ids,
+                    offset,
+                )
+                .map_err(|error| error.to_string())
+        });
+        let shared_references = if self.session().is_some_and(|session| {
+            session.active_version_id() == clipboard.version_id
+                && session.active_lens_id() != clipboard.lens_id
+        }) {
+            staged
+                .as_ref()
+                .map(|mutation| {
+                    mutation
+                        .selection_ids()
+                        .iter()
+                        .filter(|id| clipboard.concept_ids.contains(id))
+                        .count()
+                })
+                .unwrap_or(0)
+        } else {
+            0
+        };
+        let message = if shared_references == clipboard.concept_ids.len() {
+            format!(
+                "Added {shared_references} shared card {} without relationships.",
+                if shared_references == 1 {
+                    "reference"
+                } else {
+                    "references"
+                }
+            )
+        } else if shared_references == 0 {
+            format!(
+                "Pasted {} independent card {} without relationships.",
+                clipboard.concept_ids.len(),
+                if clipboard.concept_ids.len() == 1 {
+                    "copy"
+                } else {
+                    "copies"
+                }
+            )
+        } else {
+            format!(
+                "Pasted {} cards ({shared_references} shared references) without relationships.",
+                clipboard.concept_ids.len()
+            )
+        };
+        self.commit_staged_action(staged, None, false, message);
     }
 
     fn open_create_version_pane(&mut self, source_title: String) {
@@ -2338,6 +2483,14 @@ impl InfiniteNoteCanvasApp {
         self.restore_active_lens_camera();
     }
 
+    fn request_relationship_kind(&mut self, source_id: u32, target_id: u32, position: Pos2) {
+        self.dialog = Some(EditorDialog::ChooseRelationshipKind {
+            source_id,
+            target_id,
+            position,
+        });
+    }
+
     fn create_relationship(&mut self, source_id: u32, target_id: u32, kind: RelationshipKind) {
         if source_id == target_id {
             self.set_failure(
@@ -2359,8 +2512,8 @@ impl InfiniteNoteCanvasApp {
                     .stage_create_relationship(source_id, target_id, kind)
                     .map_err(|error| error.to_string())
             }),
-            Some(target_id),
-            false,
+            None,
+            true,
             format!("Created {} relationship.", kind.label()),
         );
     }
@@ -2421,7 +2574,7 @@ impl InfiniteNoteCanvasApp {
                 self.commit_staged_action(
                     self.stage_action(|session| {
                         session
-                            .stage_delete_active_concepts(&concept_ids)
+                            .stage_remove_active_concept_references(&concept_ids)
                             .map_err(|error| error.to_string())
                     }),
                     None,
@@ -2621,7 +2774,6 @@ impl InfiniteNoteCanvasApp {
         }
     }
 
-    #[cfg(not(target_arch = "wasm32"))]
     fn open_settings_window(&self) {
         let mut preferences = self
             .preferences
@@ -3109,6 +3261,7 @@ impl InfiniteNoteCanvasApp {
         self.boundary_inspector_draft = None;
         self.hover_target = None;
         self.lens_cameras.clear();
+        self.lens_canvas_controls.clear();
         self.notices.clear();
         self.type_change_failure_toast = None;
     }
@@ -3152,7 +3305,8 @@ impl InfiniteNoteCanvasApp {
                 .with_inner_size(SETTINGS_WINDOW_INNER_SIZE)
                 .with_min_inner_size(SETTINGS_WINDOW_MINIMUM_SIZE)
                 .with_resizable(true),
-            move |ui, _| {
+            move |ui, viewport_class| {
+                ui.visuals_mut().clone_from(&atlas_visuals());
                 let mut preferences = preferences
                     .lock()
                     .unwrap_or_else(|error| error.into_inner());
@@ -3161,7 +3315,9 @@ impl InfiniteNoteCanvasApp {
                     return;
                 }
                 if preferences.focus_requested {
-                    ui.ctx().send_viewport_cmd(egui::ViewportCommand::Focus);
+                    if viewport_class != egui::ViewportClass::EmbeddedWindow {
+                        ui.ctx().send_viewport_cmd(egui::ViewportCommand::Focus);
+                    }
                     preferences.focus_requested = false;
                 }
                 let mut close_window = ui.input(|input| input.viewport().close_requested());
@@ -3365,7 +3521,9 @@ impl InfiniteNoteCanvasApp {
                 if close_window {
                     preferences.open = false;
                     preferences.focus_requested = false;
-                    ui.ctx().send_viewport_cmd(egui::ViewportCommand::Close);
+                    if viewport_class != egui::ViewportClass::EmbeddedWindow {
+                        ui.ctx().send_viewport_cmd(egui::ViewportCommand::Close);
+                    }
                 }
             },
         );
@@ -3386,10 +3544,11 @@ impl InfiniteNoteCanvasApp {
         let session = self.session()?;
         session
             .document()
-            .semantic_zoom_frame(
+            .semantic_zoom_frame_with_relationship_rollup(
                 session.active_version_id(),
                 session.active_lens_id(),
                 self.interaction.camera().scale,
+                self.roll_up_relationships,
             )
             .ok()
     }
@@ -3527,6 +3686,7 @@ impl InfiniteNoteCanvasApp {
     fn begin_inline_layer_creation(&mut self) {
         self.open_layer_cross_section();
         let layer_count = self.layer_cross_section_drafts.len();
+        self.layer_creation_index = layer_count;
         let defaults = self.stored_preferences();
         self.layer_creation_title = semantic_zoom_layer_creation_title(layer_count);
         self.layer_creation_active_zoom_start_percent = defaults.default_layer_start_percent;
@@ -3837,6 +3997,16 @@ impl InfiniteNoteCanvasApp {
 
     fn save_active_lens_camera(&mut self) {
         if let Some(key) = self.active_lens_viewport_key() {
+            self.lens_canvas_controls.insert(
+                key.clone(),
+                LensCanvasControls {
+                    search_query: self.canvas_search_query.clone(),
+                    search_match_index: self.canvas_search_match_index,
+                    type_filter_ids: self.canvas_type_filter_ids.clone(),
+                    show_all_cards: self.show_all_cards,
+                    roll_up_relationships: self.roll_up_relationships,
+                },
+            );
             self.lens_cameras.insert(key, self.interaction.camera());
         }
     }
@@ -3845,6 +4015,17 @@ impl InfiniteNoteCanvasApp {
         let Some(key) = self.active_lens_viewport_key() else {
             return;
         };
+        let controls = self
+            .lens_canvas_controls
+            .get(&key)
+            .cloned()
+            .unwrap_or_default();
+        self.canvas_search_query = controls.search_query;
+        self.canvas_search_match_index = controls.search_match_index;
+        self.canvas_type_filter_ids = controls.type_filter_ids;
+        self.show_all_cards = controls.show_all_cards;
+        self.roll_up_relationships = controls.roll_up_relationships;
+        self.last_canvas_pointer = None;
         let selected_card = self
             .selected_concept_id()
             .and_then(|concept_id| self.dataset.card_by_id(concept_id));
@@ -3854,6 +4035,7 @@ impl InfiniteNoteCanvasApp {
             self.canvas_viewport_size,
         );
         self.interaction.set_camera(camera);
+        self.refresh_display_dataset();
     }
 
     fn set_canvas_zoom_scale(&mut self, scale: f32, viewport_size: Point) {
@@ -4050,42 +4232,14 @@ impl InfiniteNoteCanvasApp {
                     self.open_create_pane(mode);
                 }
             }
-            if self.inspector_collapsed && ui.button("Show inspector").clicked() {
-                self.inspector_collapsed = false;
+            if ui.button("Preferences").clicked() {
+                self.open_settings_window();
             }
             if ui
                 .add_enabled(workspace_controls_enabled, egui::Button::new("Layers"))
                 .clicked()
             {
                 self.open_layer_cross_section();
-            }
-            let semantic_zoom_is_configured = self.semantic_zoom_is_configured();
-            let view_all_button = egui::Button::new(if self.show_all_cards {
-                "Use layers"
-            } else {
-                "View all"
-            })
-            .fill(if self.show_all_cards {
-                color_with_opacity(ATLAS_ROUTE_BLUE, 0.24)
-            } else {
-                Color32::TRANSPARENT
-            })
-            .stroke(Stroke::new(
-                1.0,
-                if self.show_all_cards {
-                    ATLAS_ROUTE_BLUE
-                } else {
-                    ATLAS_QUIET_GRAPHITE
-                },
-            ));
-            let view_all_response = ui.add_enabled(semantic_zoom_is_configured, view_all_button);
-            let view_all_response = view_all_response.on_hover_text(if self.show_all_cards {
-                "Return to the cards for the current zoom layer."
-            } else {
-                "Show all cards and relationships without changing saved layers."
-            });
-            if view_all_response.clicked() {
-                self.toggle_show_all_cards();
             }
             if ui
                 .add_enabled(
@@ -4335,6 +4489,15 @@ impl InfiniteNoteCanvasApp {
                             }
                         });
                         ui.horizontal(|ui| {
+                            if ui.checkbox(&mut self.roll_up_relationships, "O-I").on_hover_text("Roll relationships from hidden child cards up to their visible parent.").changed() {
+                                self.refresh_display_dataset();
+                            }
+                            let mut show_all = self.show_all_cards;
+                            if ui.add_enabled(self.semantic_zoom_is_configured(), egui::Checkbox::new(&mut show_all, "View all")).changed() {
+                                self.toggle_show_all_cards();
+                            }
+                        });
+                        ui.horizontal(|ui| {
                             egui::menu::MenuButton::new("Filter types")
                                 .config(
                                     egui::menu::MenuConfig::new().close_behavior(
@@ -4429,6 +4592,17 @@ impl InfiniteNoteCanvasApp {
         let viewport = response.rect;
         let viewport_size = Point::new(viewport.width(), viewport.height());
         self.canvas_viewport_size = viewport_size;
+        self.last_canvas_viewport = Some(viewport);
+        if let Some(position) = ui
+            .input(|input| input.pointer.hover_pos())
+            .filter(|position| viewport.contains(*position))
+        {
+            self.last_canvas_pointer = Some(
+                self.interaction
+                    .camera()
+                    .screen_to_world(point_in_viewport(position, viewport)),
+            );
+        }
         if self.fit_example_on_next_frame && viewport_size.x > 0.0 && viewport_size.y > 0.0 {
             self.fit_example_on_next_frame = false;
             let bounds = self
@@ -4536,6 +4710,34 @@ impl InfiniteNoteCanvasApp {
                 if ui.button("Inspect card").clicked() {
                     action = Some(CanvasContextMenuAction::InspectCard(*concept_id));
                 }
+                let layers = self
+                    .session()
+                    .and_then(|session| session.available_semantic_zoom_layers().ok())
+                    .unwrap_or_default();
+                let base = self
+                    .card_layer_visibility(*concept_id, None)
+                    .and_then(|visibility| visibility.base_layer_id);
+                let index = layers
+                    .iter()
+                    .position(|layer| Some(&layer.id) == base.as_ref());
+                if ui
+                    .add_enabled(
+                        index.is_some_and(|index| index > 0),
+                        egui::Button::new("Move up a layer and resize"),
+                    )
+                    .clicked()
+                {
+                    action = Some(CanvasContextMenuAction::ShiftCardLayer(*concept_id, false));
+                }
+                if ui
+                    .add_enabled(
+                        index.is_some_and(|index| index + 1 < layers.len()),
+                        egui::Button::new("Move down a layer and resize"),
+                    )
+                    .clicked()
+                {
+                    action = Some(CanvasContextMenuAction::ShiftCardLayer(*concept_id, true));
+                }
                 if ui.button("Copy card").clicked() {
                     action = Some(CanvasContextMenuAction::CopyCard(*concept_id));
                 }
@@ -4619,6 +4821,18 @@ impl InfiniteNoteCanvasApp {
             CanvasContextMenuAction::InspectCard(concept_id) => {
                 self.set_selection(Some(concept_id))
             }
+            CanvasContextMenuAction::ShiftCardLayer(concept_id, deeper) => {
+                self.commit_staged_action(
+                    self.stage_action(|session| {
+                        session
+                            .stage_shift_concept_layer(concept_id, deeper)
+                            .map_err(|error| error.to_string())
+                    }),
+                    Some(concept_id),
+                    true,
+                    "Moved and resized card to adjacent layer.",
+                );
+            }
             CanvasContextMenuAction::CopyCard(concept_id) => {
                 self.set_selection(Some(concept_id));
                 self.copy_selected_cards();
@@ -4639,7 +4853,13 @@ impl InfiniteNoteCanvasApp {
             CanvasContextMenuAction::DeleteRelationship(relationship_id) => {
                 self.remove_relationship(relationship_id);
             }
-            CanvasContextMenuAction::PasteCards => self.paste_cards(),
+            CanvasContextMenuAction::PasteCards => {
+                let position = self
+                    .canvas_context_menu
+                    .as_ref()
+                    .map(|menu| menu.world_position);
+                self.paste_cards_at(position);
+            }
             CanvasContextMenuAction::CreateCard(world_position) => {
                 self.open_create_pane_at(SidePaneMode::CreateCard, world_position);
             }
@@ -4657,11 +4877,10 @@ impl InfiniteNoteCanvasApp {
             .and_then(|session| {
                 session
                     .document()
-                    .version(session.active_version_id())
+                    .relationships_in_lens(session.active_version_id(), session.active_lens_id())
                     .ok()
-                    .map(|version| {
-                        version
-                            .relationships
+                    .map(|relationships| {
+                        relationships
                             .iter()
                             .map(|relationship| RelationshipView {
                                 id: relationship.id.clone(),
@@ -4690,8 +4909,17 @@ impl InfiniteNoteCanvasApp {
         relationships
             .into_iter()
             .filter(|relationship| {
-                self.canvas_concept_id_matches_type_filter(relationship.source_id)
-                    && self.canvas_concept_id_matches_type_filter(relationship.target_id)
+                let dataset = self
+                    .session()
+                    .map(|session| session.dataset())
+                    .unwrap_or(&self.dataset);
+                [relationship.source_id, relationship.target_id]
+                    .into_iter()
+                    .all(|id| {
+                        dataset
+                            .card_by_id(id)
+                            .is_some_and(|card| self.canvas_card_matches_type_filter(card))
+                    })
             })
             .collect()
     }
@@ -4706,6 +4934,13 @@ impl InfiniteNoteCanvasApp {
         } else {
             relationships
         };
+        let relationships: Vec<_> = relationships
+            .into_iter()
+            .filter(|relationship| {
+                self.canvas_concept_id_matches_type_filter(relationship.source_id)
+                    && self.canvas_concept_id_matches_type_filter(relationship.target_id)
+            })
+            .collect();
         let cards = self
             .session()
             .map(|session| session.dataset())
@@ -4866,6 +5101,12 @@ impl InfiniteNoteCanvasApp {
         viewport_size: Point,
         controls_bounds: Rect,
     ) {
+        if matches!(
+            self.dialog,
+            Some(EditorDialog::ChooseRelationshipKind { .. })
+        ) {
+            return;
+        }
         let input = ui.input(|input| {
             (
                 input.pointer.hover_pos(),
@@ -5025,7 +5266,7 @@ impl InfiniteNoteCanvasApp {
                     relationship_port_hit_radius(self.interaction.camera()),
                 ) && self.canvas_card_is_interactive(source_id)
                 {
-                    self.set_selection(Some(source_id));
+                    // Connecting an edge port is a canvas gesture, not inspection.
                     self.gesture = Some(PointerGesture::CreateRelationship {
                         source_id,
                         source_port,
@@ -5291,7 +5532,7 @@ impl InfiniteNoteCanvasApp {
                         self.canvas_concept_id_matches_type_filter(source_id)
                             && self.canvas_concept_id_matches_type_filter(*target_id)
                     }) {
-                        self.create_relationship(source_id, target_id, RelationshipKind::DependsOn);
+                        self.request_relationship_kind(source_id, target_id, pointer.unwrap());
                     }
                 }
                 gesture => self.gesture = gesture,
@@ -5354,11 +5595,23 @@ impl InfiniteNoteCanvasApp {
                 )
             })
             .collect::<BTreeMap<_, _>>();
+        let boundary_layer_opacities: BTreeMap<_, _> = self
+            .semantic_zoom_frame()
+            .map(|frame| {
+                frame
+                    .layers
+                    .into_iter()
+                    .map(|layer| (layer.id, layer.opacity))
+                    .collect()
+            })
+            .unwrap_or_default();
         paint_visual_boundaries(
             painter,
             &active_visual_boundaries,
             &VisualBoundaryPaintContext {
                 fade_bounds_by_id: &fade_boundary_bounds_by_id,
+                layer_opacities: &boundary_layer_opacities,
+                filter_layers: self.semantic_layer_filtering_is_active(),
                 selected_boundary_id: self.selected_boundary_id.as_deref(),
                 hover_target: self.hover_target.as_ref(),
                 gesture: self.gesture.as_ref(),
@@ -5452,6 +5705,20 @@ impl InfiniteNoteCanvasApp {
                         _ => None,
                     },
                     resize_from_center: resize_anchor_for_card(card.id, self.gesture.as_ref()),
+                    layer_shifting: match self.gesture.as_ref() {
+                        Some(PointerGesture::ResizeCard {
+                            concept_id,
+                            preview_bounds,
+                            ..
+                        }) if *concept_id == card.id => {
+                            self.card_layer_visibility(card.id, None)
+                                .and_then(|visibility| visibility.base_layer_id)
+                                != self
+                                    .card_layer_visibility(card.id, Some(*preview_bounds))
+                                    .and_then(|visibility| visibility.base_layer_id)
+                        }
+                        _ => false,
+                    },
                     detail_level: zoom_level,
                     opacity: context_entity_opacity(
                         card_opacity_by_id.get(&card.id).copied().unwrap_or(1.0),
@@ -5970,6 +6237,37 @@ impl InfiniteNoteCanvasApp {
             "Boundary inspector",
             "A visual boundary groups the canvas. It does not create a graph fact.",
         );
+        let layers = self
+            .session()
+            .and_then(|session| session.available_semantic_zoom_layers().ok())
+            .unwrap_or_default();
+        let mut layer_id = boundary.layer_id.clone();
+        egui::ComboBox::from_label("Zoom layer")
+            .selected_text(
+                layer_id
+                    .as_ref()
+                    .and_then(|id| layers.iter().find(|layer| &layer.id == id))
+                    .map(|layer| layer.title.as_str())
+                    .unwrap_or("Master context"),
+            )
+            .show_ui(ui, |ui| {
+                ui.selectable_value(&mut layer_id, None, "Master context");
+                for layer in layers {
+                    ui.selectable_value(&mut layer_id, Some(layer.id), layer.title);
+                }
+            });
+        if layer_id != boundary.layer_id {
+            self.commit_staged_action(
+                self.stage_action(|session| {
+                    session
+                        .stage_set_visual_boundary_layer(&boundary_id, layer_id)
+                        .map_err(|error| error.to_string())
+                }),
+                None,
+                true,
+                "Moved boundary to zoom layer.",
+            );
+        }
         let mut save = None;
         let mut delete = None;
         let mut invalid_title = false;
@@ -6302,11 +6600,6 @@ impl InfiniteNoteCanvasApp {
                     .strong()
                     .color(ATLAS_PAPER_SIGNAL),
             );
-            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                if ui.add(primary_button("New zoom layer")).clicked() {
-                    self.begin_inline_layer_creation();
-                }
-            });
         });
         ui.label("The cross-section shows where each saved layer sits on the zoom scale.");
         ui.small("Change Start or End to move a layer. Fade extends its transition on both sides.");
@@ -6405,6 +6698,7 @@ impl InfiniteNoteCanvasApp {
                         fade_percent: self.layer_creation_fade_percent,
                     };
                     let creating_base_layer = self.layer_cross_section_drafts.is_empty();
+                    let insertion_index = self.layer_creation_index;
                     let staged = self.stage_action(|session| {
                         if creating_base_layer {
                             session
@@ -6415,17 +6709,17 @@ impl InfiniteNoteCanvasApp {
                                 .map_err(|error| error.to_string())
                         } else {
                             session
-                                .stage_create_semantic_zoom_layer_with_percent_settings(
+                                .stage_create_semantic_zoom_layer_at(
                                     title,
                                     percent_settings,
+                                    insertion_index,
                                 )
                                 .map_err(|error| error.to_string())
                         }
                     });
-                    let layer_id = staged
-                        .as_ref()
-                        .ok()
-                        .and_then(staged_last_semantic_zoom_layer_id);
+                    let layer_id = staged.as_ref().ok().and_then(|staged| {
+                        staged_semantic_zoom_layer_id_at(staged, insertion_index)
+                    });
                     self.commit_staged_action(staged, None, false, "Created a zoom layer.");
                     self.layer_cross_section_creating = false;
                     self.open_layer_cross_section();
@@ -6437,9 +6731,15 @@ impl InfiniteNoteCanvasApp {
             }
         }
 
+        if self.layer_cross_section_drafts.is_empty()
+            && !self.layer_cross_section_creating
+            && ui.button("+ Create first layer").clicked()
+        {
+            self.begin_inline_layer_creation();
+        }
         if self.layer_cross_section_drafts.is_empty() {
             ui.add_space(12.0);
-            ui.label("No saved zoom layers. Use New zoom layer to define a presentation range.");
+            ui.label("No saved zoom layers. Choose a position below to create one.");
             return;
         }
 
@@ -6448,6 +6748,16 @@ impl InfiniteNoteCanvasApp {
         let mut reorder_request = None;
         let mut range_link_requests = Vec::new();
         for target_index in 0..self.layer_cross_section_drafts.len() {
+            if ui.button("+ Create layer here").clicked() {
+                let target = self.layer_cross_section_drafts[target_index].clone();
+                self.begin_inline_layer_creation();
+                self.layer_creation_index = target_index;
+                let width =
+                    (target.active_zoom_end_percent - target.active_zoom_start_percent).max(1.0);
+                self.layer_creation_active_zoom_start_percent = target.active_zoom_start_percent;
+                self.layer_creation_active_zoom_end_percent =
+                    target.active_zoom_start_percent + width;
+            }
             let previous_end_percent = target_index
                 .checked_sub(1)
                 .and_then(|index| self.layer_cross_section_drafts.get(index))
@@ -6602,6 +6912,16 @@ impl InfiniteNoteCanvasApp {
             ui.add_space(6.0);
         }
 
+        if ui.button("+ Create layer here").clicked() {
+            let last = self.layer_cross_section_drafts.last().cloned();
+            self.begin_inline_layer_creation();
+            if let Some(last) = last {
+                self.layer_creation_active_zoom_start_percent = last.active_zoom_end_percent;
+                self.layer_creation_active_zoom_end_percent = last.active_zoom_end_percent
+                    + (last.active_zoom_end_percent - last.active_zoom_start_percent).max(1.0);
+            }
+        }
+
         for (target_index, boundary_percent, set_start) in range_link_requests {
             let Some(draft) = self.layer_cross_section_drafts.get_mut(target_index) else {
                 continue;
@@ -6681,11 +7001,10 @@ impl InfiniteNoteCanvasApp {
                 let selected: BTreeSet<_> = selected_concept_ids.iter().copied().collect();
                 session
                     .document()
-                    .version(session.active_version_id())
+                    .relationships_in_lens(session.active_version_id(), session.active_lens_id())
                     .ok()
-                    .map(|version| {
-                        version
-                            .relationships
+                    .map(|relationships| {
+                        relationships
                             .iter()
                             .filter(|relationship| {
                                 selected.contains(&relationship.source_id)
@@ -6877,70 +7196,18 @@ impl InfiniteNoteCanvasApp {
     }
 
     fn relationships_for_concept(&self, concept_id: u32) -> Vec<RelationshipView> {
-        self.session()
-            .and_then(|session| {
-                session
-                    .document()
-                    .relationships_for_concept(session.active_version_id(), concept_id)
-                    .ok()
-                    .map(|relationships| {
-                        relationships
-                            .into_iter()
-                            .map(|relationship| RelationshipView {
-                                id: relationship.id.clone(),
-                                source_id: relationship.source_id,
-                                target_id: relationship.target_id,
-                                kind: relationship.kind,
-                                source_title: session
-                                    .document()
-                                    .concept(session.active_version_id(), relationship.source_id)
-                                    .map(|concept| concept.title.clone())
-                                    .unwrap_or_else(|_| {
-                                        format!("Concept #{}", relationship.source_id)
-                                    }),
-                                target_title: session
-                                    .document()
-                                    .concept(session.active_version_id(), relationship.target_id)
-                                    .map(|concept| concept.title.clone())
-                                    .unwrap_or_else(|_| {
-                                        format!("Concept #{}", relationship.target_id)
-                                    }),
-                            })
-                            .collect()
-                    })
+        self.active_relationships()
+            .into_iter()
+            .filter(|relationship| {
+                relationship.source_id == concept_id || relationship.target_id == concept_id
             })
-            .unwrap_or_default()
+            .collect()
     }
 
     fn relationship_by_id(&self, relationship_id: &str) -> Option<RelationshipView> {
-        self.session().and_then(|session| {
-            session
-                .document()
-                .version(session.active_version_id())
-                .ok()
-                .and_then(|version| {
-                    version
-                        .relationships
-                        .iter()
-                        .find(|relationship| relationship.id == relationship_id)
-                })
-                .map(|relationship| RelationshipView {
-                    id: relationship.id.clone(),
-                    source_id: relationship.source_id,
-                    target_id: relationship.target_id,
-                    kind: relationship.kind,
-                    source_title: session
-                        .document()
-                        .concept(session.active_version_id(), relationship.source_id)
-                        .map(|concept| concept.title.clone())
-                        .unwrap_or_else(|_| format!("Concept #{}", relationship.source_id)),
-                    target_title: session
-                        .document()
-                        .concept(session.active_version_id(), relationship.target_id)
-                        .map(|concept| concept.title.clone())
-                        .unwrap_or_else(|_| format!("Concept #{}", relationship.target_id)),
-                })
-        })
+        self.active_relationships()
+            .into_iter()
+            .find(|relationship| relationship.id == relationship_id)
     }
 
     fn relationship_kinds_for_endpoints(
@@ -7144,7 +7411,7 @@ impl InfiniteNoteCanvasApp {
         ui.heading("Create relationship");
         ui.label("Primary card");
         ui.strong(self.concept_label(primary_concept_id));
-        ui.small("Each action creates: primary card depends on target card.");
+        ui.small("Choose a target, then choose the relationship type.");
         let mut create_target = None;
         let mut primary_change = None;
         for concept_id in selected_concept_ids {
@@ -7163,7 +7430,7 @@ impl InfiniteNoteCanvasApp {
                     }
                 } else {
                     ui.horizontal(|ui| {
-                        if ui.button("Create depends on").clicked() {
+                        if ui.button("Connect...").clicked() {
                             create_target = Some(concept_id);
                         }
                         if ui.button("Make primary").clicked() {
@@ -7178,7 +7445,12 @@ impl InfiniteNoteCanvasApp {
             self.inspector_draft = None;
         }
         if let Some(target_id) = create_target {
-            self.create_relationship(primary_concept_id, target_id, RelationshipKind::DependsOn);
+            self.request_relationship_kind(
+                primary_concept_id,
+                target_id,
+                ui.input(|input| input.pointer.hover_pos())
+                    .unwrap_or(ui.next_widget_position()),
+            );
         }
     }
 
@@ -7396,6 +7668,37 @@ impl InfiniteNoteCanvasApp {
                     self.dialog = Some(EditorDialog::RenameLens { lens_id, draft });
                 }
             }
+            Some(EditorDialog::ChooseRelationshipKind {
+                source_id,
+                target_id,
+                position,
+            }) => {
+                let mut keep_open = true;
+                egui::Window::new("Relationship type")
+                    .id(egui::Id::unique("choose-relationship-kind"))
+                    .collapsible(false)
+                    .resizable(false)
+                    .fixed_pos(position)
+                    .show(ctx, |ui| {
+                        for kind in self.relationship_kinds_for_endpoints(source_id, target_id) {
+                            if ui.button(kind.label()).clicked() {
+                                self.create_relationship(source_id, target_id, kind);
+                                keep_open = false;
+                            }
+                        }
+                        ui.separator();
+                        if ui.button("Cancel").clicked() {
+                            keep_open = false;
+                        }
+                    });
+                if keep_open {
+                    self.dialog = Some(EditorDialog::ChooseRelationshipKind {
+                        source_id,
+                        target_id,
+                        position,
+                    });
+                }
+            }
             Some(EditorDialog::ConfirmRelationshipRemoval { relationship }) => {
                 let mut keep_open = true;
                 egui::Window::new("Remove relationship")
@@ -7531,19 +7834,123 @@ impl eframe::App for InfiniteNoteCanvasApp {
         );
         self.dialogs(ui.ctx());
         self.handle_history_shortcuts(ui.ctx());
+        self.publish_pending_card_clipboard(ui.ctx());
         self.toasts(ui.ctx());
     }
 }
 
-/// Canvas card selection is the active editing target even when an authoring
-/// pane has left its empty text field focused. With no selected card, normal
-/// text editing keeps command shortcuts for its own copy and paste behavior.
+/// Includes authored layer scaling and the minimum painted shell at this zoom.
+/// Hidden placements use their base layer, so temporary filtering cannot hide collisions.
+fn paste_card_visual_bounds(
+    document: &WorkspaceDocument,
+    version_id: &str,
+    lens_id: &str,
+    camera_scale: f32,
+    show_all: bool,
+) -> BTreeMap<u32, CanvasRect> {
+    let Some(lens) = document
+        .version(version_id)
+        .ok()
+        .and_then(|version| version.lenses.iter().find(|lens| lens.id == lens_id))
+    else {
+        return BTreeMap::new();
+    };
+    let frame_bounds = if show_all {
+        BTreeMap::new()
+    } else {
+        document
+            .semantic_zoom_frame(version_id, lens_id, camera_scale)
+            .map(|frame| {
+                frame
+                    .cards
+                    .into_iter()
+                    .map(|card| (card.card.id, card.card.bounds))
+                    .collect()
+            })
+            .unwrap_or_default()
+    };
+    lens.placements
+        .iter()
+        .map(|placement| {
+            let bounds = frame_bounds
+                .get(&placement.concept_id)
+                .copied()
+                .unwrap_or_else(|| {
+                    let scale = if show_all {
+                        1.0
+                    } else {
+                        document
+                            .semantic_zoom_card_layer_visibility(
+                                version_id,
+                                lens_id,
+                                placement.concept_id,
+                            )
+                            .ok()
+                            .and_then(|visibility| visibility.base_layer_id)
+                            .and_then(|id| {
+                                lens.semantic_zoom_layers
+                                    .iter()
+                                    .find(|layer| layer.id == id)
+                            })
+                            .map(|layer| layer.card_scale)
+                            .unwrap_or(1.0)
+                    };
+                    let size = placement.bounds.size * scale;
+                    CanvasRect::new(
+                        placement.bounds.origin + (placement.bounds.size - size) * 0.5,
+                        size,
+                    )
+                });
+            let minimum = MINIMUM_VISIBLE_CARD_SIZE / camera_scale;
+            let size = Point::new(bounds.size.x.max(minimum), bounds.size.y.max(minimum));
+            let border = SELECTED_CARD_STROKE_WIDTH / camera_scale;
+            (
+                placement.concept_id,
+                CanvasRect::new(
+                    bounds.origin + (bounds.size - size) * 0.5 - Point::new(border, border),
+                    size + Point::new(border * 2.0, border * 2.0),
+                ),
+            )
+        })
+        .collect()
+}
+
+/// Anchor the copied group at the cursor. If that would overlap an existing card,
+/// shift the group just beyond the blocking card; never create accidental nesting.
+fn card_paste_delta(source: &[CanvasRect], occupied: &[CanvasRect], anchor: Point) -> Point {
+    let Some(first) = source.first() else {
+        return Point::default();
+    };
+    let origin = source.iter().fold(first.origin, |point, bounds| {
+        Point::new(point.x.min(bounds.origin.x), point.y.min(bounds.origin.y))
+    });
+    let mut delta = anchor - origin;
+    loop {
+        let mut next_x = delta.x;
+        for bounds in source {
+            let pasted = CanvasRect::new(bounds.origin + delta, bounds.size);
+            for obstacle in occupied {
+                if pasted.intersects(*obstacle) {
+                    next_x = next_x.max(
+                        obstacle.origin.x + obstacle.size.x + CARD_PASTE_OFFSET - bounds.origin.x,
+                    );
+                }
+            }
+        }
+        if next_x == delta.x {
+            return delta;
+        }
+        delta.x = next_x;
+    }
+}
+
+/// Text editors always retain normal system copy/paste, including with a selected card.
 fn card_clipboard_shortcuts_take_priority(
     dialog_is_open: bool,
     text_edit_is_focused: bool,
-    has_selected_cards: bool,
+    _has_selected_cards: bool,
 ) -> bool {
-    !dialog_is_open && (!text_edit_is_focused || has_selected_cards)
+    !dialog_is_open && !text_edit_is_focused
 }
 
 /// Native desktop integrations report Command+C and Command+V as semantic
@@ -7690,15 +8097,20 @@ fn relationship_views_in_semantic_frame(
     relationships: &[RelationshipView],
     frame: &SemanticZoomFrame,
 ) -> Vec<RelationshipView> {
-    let rendered_ids: BTreeSet<_> = frame
+    let rendered: BTreeMap<_, _> = frame
         .relationships
         .iter()
-        .map(|relationship| relationship.id.as_str())
+        .map(|relationship| (relationship.id.as_str(), relationship))
         .collect();
     relationships
         .iter()
-        .filter(|relationship| rendered_ids.contains(relationship.id.as_str()))
-        .cloned()
+        .filter_map(|relationship| {
+            let projected = rendered.get(relationship.id.as_str())?;
+            let mut view = relationship.clone();
+            view.source_id = projected.source_id;
+            view.target_id = projected.target_id;
+            Some(view)
+        })
         .collect()
 }
 
@@ -8050,7 +8462,10 @@ fn semantic_zoom_layer_creation_percent_settings(
     }
 }
 
-fn staged_last_semantic_zoom_layer_id(staged: &StagedWorkspaceMutation) -> Option<String> {
+fn staged_semantic_zoom_layer_id_at(
+    staged: &StagedWorkspaceMutation,
+    index: usize,
+) -> Option<String> {
     staged
         .document()
         .version(staged.active_version_id())
@@ -8059,7 +8474,7 @@ fn staged_last_semantic_zoom_layer_id(staged: &StagedWorkspaceMutation) -> Optio
         .iter()
         .find(|lens| lens.id == staged.active_lens_id())?
         .semantic_zoom_layers
-        .last()
+        .get(index)
         .map(|layer| layer.id.clone())
 }
 
@@ -9269,6 +9684,8 @@ struct SemanticRelationshipPaintContext<'a> {
 }
 
 struct VisualBoundaryPaintContext<'a> {
+    layer_opacities: &'a BTreeMap<String, f32>,
+    filter_layers: bool,
     fade_bounds_by_id: &'a BTreeMap<String, CanvasRect>,
     selected_boundary_id: Option<&'a str>,
     hover_target: Option<&'a CanvasHoverTarget>,
@@ -10532,7 +10949,16 @@ fn paint_visual_boundaries(
         let selected = context.selected_boundary_id == Some(boundary.id.as_str());
         let hovered = matches!(context.hover_target, Some(CanvasHoverTarget::Boundary(id)) if id == &boundary.id);
         let opacity = context_entity_opacity(
-            1.0,
+            if context.filter_layers {
+                boundary
+                    .layer_id
+                    .as_ref()
+                    .and_then(|id| context.layer_opacities.get(id))
+                    .copied()
+                    .unwrap_or(1.0)
+            } else {
+                1.0
+            },
             context.fade_bounds_by_id.get(&boundary.id).copied(),
             context.visible_world,
         );
@@ -10593,7 +11019,10 @@ fn paint_visual_boundaries(
                 Align2::LEFT_TOP,
                 &boundary.summary,
                 FontId::proportional(ATLAS_SUPPORTING_TEXT_SIZE),
-                color_with_opacity(ATLAS_QUIET_GRAPHITE, opacity),
+                color_with_opacity(
+                    ATLAS_QUIET_GRAPHITE,
+                    opacity * summary_opacity_for_screen_bounds(rect),
+                ),
             );
         }
         if selected {
@@ -10609,11 +11038,16 @@ fn paint_visual_boundaries(
     }
 }
 
-fn should_paint_boundary_summary(scale: f32, rect: Rect, summary: &str) -> bool {
-    semantic_zoom_level(scale) == SemanticZoomLevel::Detail
-        && !summary.trim().is_empty()
-        && rect.width() >= 160.0
-        && rect.height() >= 68.0
+fn should_paint_boundary_summary(_scale: f32, rect: Rect, summary: &str) -> bool {
+    !summary.trim().is_empty() && summary_opacity_for_screen_bounds(rect) > 0.0
+}
+
+/// Text follows the displayed card size, including its authored layer scale,
+/// rather than the camera's global detail threshold.
+fn summary_opacity_for_screen_bounds(rect: Rect) -> f32 {
+    ((rect.width() - 120.0) / 60.0)
+        .min((rect.height() - 52.0) / 28.0)
+        .clamp(0.0, 1.0)
 }
 
 fn canvas_context_entries<'a>(
@@ -11094,6 +11528,7 @@ struct CardPaintState {
     hovered: bool,
     relationship_port_hovered: Option<CardEdge>,
     resize_from_center: Option<bool>,
+    layer_shifting: bool,
     detail_level: SemanticZoomLevel,
     opacity: f32,
 }
@@ -11114,7 +11549,9 @@ fn paint_card(painter: &Painter, rect: Rect, card: &ConceptCard, state: CardPain
         8.0,
         Stroke::new(
             card_stroke_width(state.selected),
-            if state.selected {
+            if state.layer_shifting {
+                color_with_opacity(ATLAS_CONTROL_AMBER, state.opacity)
+            } else if state.selected {
                 color_with_opacity(ATLAS_ROUTE_BLUE, state.opacity)
             } else if state.hovered {
                 color_with_opacity(ATLAS_PAPER_SIGNAL, state.opacity)
@@ -11149,11 +11586,10 @@ fn paint_card(painter: &Painter, rect: Rect, card: &ConceptCard, state: CardPain
             title_color,
         );
     }
-    if state.detail_level == SemanticZoomLevel::Detail
-        && rect.width() >= 130.0
-        && rect.height() >= 56.0
-    {
-        let summary_color = color_with_opacity(ATLAS_QUIET_GRAPHITE, state.opacity);
+    let summary_opacity = summary_opacity_for_screen_bounds(rect);
+    if summary_opacity > 0.0 {
+        let summary_color =
+            color_with_opacity(ATLAS_QUIET_GRAPHITE, state.opacity * summary_opacity);
         let summary_clip_rect = Rect::from_min_max(
             rect.left_top() + Vec2::new(8.0, 30.0),
             rect.right_bottom() - Vec2::new(8.0, 7.0),
@@ -11443,6 +11879,7 @@ mod tests {
                 semantic_zoom_layer_id: None,
                 semantic_zoom_layer_draft: None,
                 lens_cameras: std::collections::HashMap::new(),
+                lens_canvas_controls: std::collections::HashMap::new(),
                 canvas_viewport_size: Point::default(),
                 fit_example_on_next_frame: false,
                 relationship_route_cache: RefCell::default(),
@@ -12098,6 +12535,7 @@ mod tests {
     #[test]
     fn boundary_pointer_target_prefers_the_resize_handle_and_keeps_visual_bounds() {
         let boundary = VisualBoundary {
+            layer_id: None,
             id: "boundary-release-context".to_string(),
             title: "Release context".to_string(),
             summary: String::new(),
@@ -12126,12 +12564,14 @@ mod tests {
     #[test]
     fn boundary_pointer_target_prefers_the_smallest_nested_boundary() {
         let child = VisualBoundary {
+            layer_id: None,
             id: "boundary-child".to_string(),
             title: "Child".to_string(),
             summary: String::new(),
             bounds: CanvasRect::new(Point::new(160.0, 140.0), Point::new(180.0, 120.0)),
         };
         let parent = VisualBoundary {
+            layer_id: None,
             id: "boundary-parent".to_string(),
             title: "Parent".to_string(),
             summary: String::new(),
@@ -12149,12 +12589,14 @@ mod tests {
     #[test]
     fn enclosing_context_boundaries_do_not_receive_direct_manipulation() {
         let context = VisualBoundary {
+            layer_id: None,
             id: "boundary-context".to_string(),
             title: "Organization".to_string(),
             summary: String::new(),
             bounds: CanvasRect::new(Point::new(0.0, 0.0), Point::new(1_000.0, 800.0)),
         };
         let child = VisualBoundary {
+            layer_id: None,
             id: "boundary-child".to_string(),
             title: "Runtime".to_string(),
             summary: String::new(),
@@ -12175,24 +12617,28 @@ mod tests {
     fn axis_covering_context_boundaries_leave_nested_children_interactive() {
         let visible_world = CanvasRect::new(Point::new(160.0, 140.0), Point::new(300.0, 250.0));
         let horizontal_context = VisualBoundary {
+            layer_id: None,
             id: "boundary-horizontal-context".to_string(),
             title: "Release lane".to_string(),
             summary: String::new(),
             bounds: CanvasRect::new(Point::new(0.0, 160.0), Point::new(800.0, 150.0)),
         };
         let horizontal_child = VisualBoundary {
+            layer_id: None,
             id: "boundary-horizontal-child".to_string(),
             title: "Release gate".to_string(),
             summary: String::new(),
             bounds: CanvasRect::new(Point::new(180.0, 170.0), Point::new(100.0, 30.0)),
         };
         let vertical_context = VisualBoundary {
+            layer_id: None,
             id: "boundary-vertical-context".to_string(),
             title: "Operations lane".to_string(),
             summary: String::new(),
             bounds: CanvasRect::new(Point::new(180.0, 0.0), Point::new(180.0, 800.0)),
         };
         let vertical_child = VisualBoundary {
+            layer_id: None,
             id: "boundary-vertical-child".to_string(),
             title: "Operations gate".to_string(),
             summary: String::new(),
@@ -12258,6 +12704,7 @@ mod tests {
     #[test]
     fn boundary_preview_uses_only_the_active_boundary_gesture() {
         let boundary = VisualBoundary {
+            layer_id: None,
             id: "boundary-release-context".to_string(),
             title: "Release context".to_string(),
             summary: String::new(),
@@ -12273,6 +12720,7 @@ mod tests {
             CanvasRect::new(Point::new(124.0, 64.0), Point::new(400.0, 260.0))
         );
         let other = VisualBoundary {
+            layer_id: None,
             id: "boundary-other".to_string(),
             ..boundary.clone()
         };
@@ -12285,18 +12733,21 @@ mod tests {
     #[test]
     fn boundary_move_preview_moves_nested_boundaries_but_not_intersecting_siblings() {
         let outer = VisualBoundary {
+            layer_id: None,
             id: "boundary-outer".to_string(),
             title: "Outer".to_string(),
             summary: String::new(),
             bounds: CanvasRect::new(Point::new(100.0, 80.0), Point::new(600.0, 420.0)),
         };
         let nested = VisualBoundary {
+            layer_id: None,
             id: "boundary-nested".to_string(),
             title: "Nested".to_string(),
             summary: String::new(),
             bounds: CanvasRect::new(Point::new(180.0, 140.0), Point::new(220.0, 140.0)),
         };
         let intersecting = VisualBoundary {
+            layer_id: None,
             id: "boundary-intersecting".to_string(),
             title: "Intersecting".to_string(),
             summary: String::new(),
@@ -12345,15 +12796,15 @@ mod tests {
     }
 
     #[test]
-    fn boundary_summary_requires_detail_scale_and_space() {
+    fn summaries_follow_display_size_independently_of_camera_scale() {
         let roomy_bounds = Rect::from_min_size(Pos2::new(40.0, 80.0), Vec2::new(240.0, 120.0));
 
-        assert!(!should_paint_boundary_summary(
+        assert!(should_paint_boundary_summary(
             0.31,
             roomy_bounds,
             "Runtime core and infrastructure."
         ));
-        assert!(!should_paint_boundary_summary(
+        assert!(should_paint_boundary_summary(
             1.49,
             roomy_bounds,
             "Runtime core and infrastructure."
@@ -12365,9 +12816,19 @@ mod tests {
         ));
         assert!(!should_paint_boundary_summary(
             2.0,
-            Rect::from_min_size(Pos2::new(40.0, 80.0), Vec2::new(150.0, 120.0)),
+            Rect::from_min_size(Pos2::new(40.0, 80.0), Vec2::new(120.0, 120.0)),
             "Runtime core and infrastructure."
         ));
+    }
+
+    #[test]
+    fn summary_fade_uses_displayed_size_continuously() {
+        let bounds = |width, height| Rect::from_min_size(Pos2::ZERO, Vec2::new(width, height));
+        assert_eq!(summary_opacity_for_screen_bounds(bounds(120.0, 80.0)), 0.0);
+        assert!((summary_opacity_for_screen_bounds(bounds(150.0, 80.0)) - 0.5).abs() < 0.001);
+        assert_eq!(summary_opacity_for_screen_bounds(bounds(180.0, 80.0)), 1.0);
+        assert!(summary_opacity_for_screen_bounds(bounds(180.0, 66.0)) < 1.0);
+        assert_eq!(summary_opacity_for_screen_bounds(bounds(180.0, 52.0)), 0.0);
     }
 
     #[test]
@@ -12478,6 +12939,7 @@ mod tests {
     #[test]
     fn canvas_context_includes_enclosing_boundary_and_containing_card_in_order() {
         let boundaries = vec![VisualBoundary {
+            layer_id: None,
             id: "boundary-outer".to_string(),
             title: "Platform landscape".to_string(),
             summary: String::new(),
@@ -12512,6 +12974,7 @@ mod tests {
     #[test]
     fn canvas_context_excludes_containers_that_only_intersect_the_viewport() {
         let boundaries = vec![VisualBoundary {
+            layer_id: None,
             id: "boundary-overlap".to_string(),
             title: "Partly visible boundary".to_string(),
             summary: String::new(),
@@ -12538,6 +13001,7 @@ mod tests {
     #[test]
     fn canvas_context_excludes_an_axis_covering_boundary_below_half_of_the_viewport() {
         let boundary = VisualBoundary {
+            layer_id: None,
             id: "boundary-axis-context".to_string(),
             title: "Shared platform".to_string(),
             summary: String::new(),
@@ -12560,6 +13024,7 @@ mod tests {
     #[test]
     fn canvas_context_includes_an_axis_covering_boundary_that_fills_half_the_viewport() {
         let boundary = VisualBoundary {
+            layer_id: None,
             id: "boundary-half-context".to_string(),
             title: "Shared platform".to_string(),
             summary: String::new(),
@@ -12664,6 +13129,7 @@ mod tests {
     #[test]
     fn canvas_context_accepts_a_container_equal_to_the_viewport() {
         let boundary = VisualBoundary {
+            layer_id: None,
             id: "boundary-equal".to_string(),
             title: "Exact context".to_string(),
             summary: String::new(),
@@ -14102,6 +14568,7 @@ mod tests {
         card.title = "Release pipeline".to_string();
         let dataset = CanvasDataset::from_records(vec![card], Vec::new());
         let boundary = VisualBoundary {
+            layer_id: None,
             id: "delivery-platform".to_string(),
             title: "Delivery platform".to_string(),
             summary: String::new(),
@@ -15120,11 +15587,256 @@ mod tests {
     }
 
     #[test]
-    fn card_clipboard_shortcuts_prioritize_a_selected_card_over_empty_authoring_focus() {
+    fn card_clipboard_shortcuts_respect_text_focus_even_with_selected_cards() {
         assert!(card_clipboard_shortcuts_take_priority(false, false, true));
-        assert!(card_clipboard_shortcuts_take_priority(false, true, true));
+        assert!(!card_clipboard_shortcuts_take_priority(false, true, true));
         assert!(!card_clipboard_shortcuts_take_priority(false, true, false));
         assert!(!card_clipboard_shortcuts_take_priority(true, false, true));
+    }
+
+    #[test]
+    fn focused_text_editor_receives_paste_while_card_selection_remains() {
+        let mut app = test_app();
+        let path = std::env::temp_dir().join(format!(
+            "reason-room-text-clipboard-{}.json",
+            std::process::id()
+        ));
+        std::fs::write(&path, WorkspaceDocument::sample().to_pretty_json().unwrap()).unwrap();
+        let session = WorkspaceSession::load_default(path.clone()).unwrap();
+        app.dataset = session.dataset().clone();
+        app.workspace_state = WorkspaceState::Loaded(Box::new(session));
+        app.set_selection(Some(5));
+        app.copy_selected_cards();
+        let count = app.dataset.cards().count();
+        let ctx = egui::Context::default();
+        let mut summary = String::new();
+        let mut output = ctx.run_ui(egui::RawInput::default(), |ui| {
+            ui.add(egui::TextEdit::singleline(&mut summary).id_salt("summary"))
+                .request_focus();
+        });
+        output.textures_delta.clear();
+        let mut output = ctx.run_ui(
+            egui::RawInput {
+                events: vec![egui::Event::Paste("Pasted summary text".into())],
+                ..Default::default()
+            },
+            |ui| {
+                assert!(ui.ctx().text_edit_focused());
+                app.handle_card_clipboard_shortcuts(ui.ctx());
+                ui.add(egui::TextEdit::singleline(&mut summary).id_salt("summary"));
+            },
+        );
+        output.textures_delta.clear();
+        assert_eq!(summary, "Pasted summary text");
+        assert_eq!(app.dataset.cards().count(), count);
+        assert_eq!(app.selected_concept_id(), Some(5));
+        let mut output = ctx.run_ui(
+            egui::RawInput {
+                events: vec![
+                    egui::Event::Key {
+                        key: egui::Key::A,
+                        physical_key: None,
+                        pressed: true,
+                        repeat: false,
+                        modifiers: egui::Modifiers::COMMAND,
+                    },
+                    egui::Event::Copy,
+                ],
+                ..Default::default()
+            },
+            |ui| {
+                app.handle_card_clipboard_shortcuts(ui.ctx());
+                ui.add(egui::TextEdit::singleline(&mut summary).id_salt("summary"));
+            },
+        );
+        assert!(output.platform_output.commands.iter().any(|command| matches!(command, egui::OutputCommand::CopyText(text) if text == "Pasted summary text")));
+        output.textures_delta.clear();
+        std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn platform_clipboard_copy_publishes_text_and_semantic_paste_duplicates_card() {
+        let mut app = test_app();
+        let path = std::env::temp_dir().join(format!(
+            "reason-room-platform-clipboard-{}.json",
+            std::process::id()
+        ));
+        std::fs::write(&path, WorkspaceDocument::sample().to_pretty_json().unwrap()).unwrap();
+        let session = WorkspaceSession::load_default(path.clone()).unwrap();
+        app.dataset = session.dataset().clone();
+        app.workspace_state = WorkspaceState::Loaded(Box::new(session));
+        app.set_selection(Some(5));
+        let count = app.dataset.cards().count();
+        let ctx = egui::Context::default();
+        let mut output = ctx.run_ui(
+            egui::RawInput {
+                events: vec![egui::Event::Copy],
+                ..Default::default()
+            },
+            |ui| {
+                app.handle_card_clipboard_shortcuts(ui.ctx());
+                app.publish_pending_card_clipboard(ui.ctx());
+            },
+        );
+        assert!(output.platform_output.commands.iter().any(
+            |command| matches!(command, egui::OutputCommand::CopyText(text) if !text.is_empty())
+        ));
+        output.textures_delta.clear();
+        let mut output = ctx.run_ui(
+            egui::RawInput {
+                events: vec![egui::Event::Paste("Reason Room cards".into())],
+                ..Default::default()
+            },
+            |ui| {
+                app.handle_card_clipboard_shortcuts(ui.ctx());
+            },
+        );
+        output.textures_delta.clear();
+        assert_eq!(app.dataset.cards().count(), count + 1);
+        let mut output = ctx.run_ui(
+            egui::RawInput {
+                events: vec![egui::Event::Key {
+                    key: egui::Key::V,
+                    physical_key: None,
+                    pressed: true,
+                    repeat: false,
+                    modifiers: egui::Modifiers::COMMAND,
+                }],
+                ..Default::default()
+            },
+            |ui| {
+                app.handle_card_clipboard_shortcuts(ui.ctx());
+            },
+        );
+        output.textures_delta.clear();
+        assert_eq!(app.dataset.cards().count(), count + 2);
+        std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn views_retain_independent_temporary_filters_and_card_paste_keeps_shared_content() {
+        let mut app = test_app();
+        let path = std::env::temp_dir().join(format!(
+            "reason-room-view-clipboard-{}.json",
+            std::process::id()
+        ));
+        let mut document = WorkspaceDocument::sample();
+        let view = document
+            .create_empty_lens("current", "Clipboard destination".into())
+            .unwrap();
+        std::fs::write(&path, document.to_pretty_json().unwrap()).unwrap();
+        let session = WorkspaceSession::load_default(path.clone()).unwrap();
+        app.dataset = session.dataset().clone();
+        app.workspace_state = WorkspaceState::Loaded(Box::new(session));
+        app.set_selection(Some(5));
+        app.copy_selected_cards();
+        app.canvas_search_query = "source-only query".into();
+        app.canvas_type_filter_ids.insert("service".into());
+        app.show_all_cards = true;
+        app.roll_up_relationships = true;
+        app.select_lens(view.clone());
+        assert!(app.canvas_search_query.is_empty());
+        assert!(app.canvas_type_filter_ids.is_empty());
+        assert!(!app.show_all_cards);
+        assert!(!app.roll_up_relationships);
+        assert!(app.can_paste_cards());
+        app.paste_cards_at(Some(Point::new(5000.0, 5000.0)));
+        let destination = app
+            .session()
+            .unwrap()
+            .document()
+            .version("current")
+            .unwrap()
+            .lenses
+            .iter()
+            .find(|lens| lens.id == view)
+            .unwrap();
+        assert_eq!(destination.placements[0].concept_id, 5);
+        let bounds = paste_card_visual_bounds(
+            app.session().unwrap().document(),
+            "current",
+            &view,
+            app.interaction.camera().scale,
+            false,
+        );
+        assert_eq!(bounds[&5].origin, Point::new(5000.0, 5000.0));
+        app.select_lens("organization-landscape".into());
+        assert_eq!(app.canvas_search_query, "source-only query");
+        assert!(app.canvas_type_filter_ids.contains("service"));
+        assert!(app.show_all_cards);
+        assert!(app.roll_up_relationships);
+        std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn paste_collision_geometry_honors_layer_scaling_and_low_zoom_shells() {
+        let mut document = WorkspaceDocument::sample();
+        let lens_id = "organization-landscape";
+        let layer = document
+            .create_semantic_zoom_layer("current", lens_id, "Paste scale".into())
+            .unwrap();
+        document
+            .update_semantic_zoom_layer_percent_settings(
+                "current",
+                lens_id,
+                &layer,
+                "Paste scale".into(),
+                SemanticZoomLayerPercentSettings {
+                    active_zoom_range: ZoomPercentRange {
+                        start_percent: 1.0,
+                        end_percent: 300.0,
+                    },
+                    fade_percent: 0.0,
+                },
+                2.0,
+            )
+            .unwrap();
+        document
+            .set_semantic_zoom_card_layer_mode(
+                "current",
+                lens_id,
+                5,
+                SemanticZoomCardLayerMode::Manual {
+                    layer_ids: vec![layer],
+                },
+            )
+            .unwrap();
+        let raw = document.version("current").unwrap().lenses[0]
+            .placements
+            .iter()
+            .find(|placement| placement.concept_id == 5)
+            .unwrap()
+            .bounds;
+        for scale in [1.0, 0.001] {
+            let projected = paste_card_visual_bounds(&document, "current", lens_id, scale, false);
+            let bounds = projected[&5];
+            assert!(bounds.size.x > raw.size.x * 2.0);
+            assert!(bounds.size.y > raw.size.y * 2.0);
+            assert!(bounds.size.x * scale >= MINIMUM_VISIBLE_CARD_SIZE);
+            assert!(bounds.size.y * scale >= MINIMUM_VISIBLE_CARD_SIZE);
+            let delta = card_paste_delta(&[bounds], &[bounds], bounds.origin);
+            assert!(!CanvasRect::new(bounds.origin + delta, bounds.size).intersects(bounds));
+        }
+    }
+
+    #[test]
+    fn pasted_group_anchors_at_cursor_and_escapes_overlapping_cards() {
+        let source = [
+            CanvasRect::new(Point::new(10.0, 20.0), Point::new(100.0, 80.0)),
+            CanvasRect::new(Point::new(30.0, 40.0), Point::new(20.0, 20.0)),
+        ];
+        let cursor = Point::new(400.0, 300.0);
+        let delta = card_paste_delta(&source, &[], cursor);
+        assert_eq!(source[0].origin + delta, cursor);
+        let delta = card_paste_delta(&source, &source, source[0].origin);
+        for bounds in source {
+            let pasted = CanvasRect::new(bounds.origin + delta, bounds.size);
+            assert!(source.iter().all(|origin| !pasted.intersects(*origin)));
+        }
+        // Existing children cannot become children of the pasted outer card.
+        let obstacle = CanvasRect::new(Point::new(420.0, 320.0), Point::new(20.0, 20.0));
+        let delta = card_paste_delta(&source, &[obstacle], cursor);
+        assert!(!CanvasRect::new(source[0].origin + delta, source[0].size).intersects(obstacle));
     }
 
     #[test]
@@ -15185,6 +15897,100 @@ mod tests {
 
         assert!(app.inspector_has_no_selection());
         assert!(app.inspector_collapsed);
+    }
+
+    #[test]
+    fn relationship_port_gesture_preserves_inspector_and_offers_type_at_drop() {
+        let mut app = test_app();
+        app.interaction
+            .set_camera(Camera::new(Point::default(), 1.0));
+        let source = test_card(Point::new(100.0, 300.0));
+        let mut target = test_card(Point::new(500.0, 300.0));
+        target.id = 8;
+        app.dataset = CanvasDataset::from_records(vec![source, target], Vec::new());
+        app.inspector_collapsed = true;
+        let ctx = egui::Context::default();
+        let viewport = Rect::from_min_size(Pos2::ZERO, Vec2::new(1000.0, 800.0));
+        let viewport_size = Point::new(1000.0, 800.0);
+        let source_port = Pos2::new(220.0, 340.0);
+        let target_port = Pos2::new(500.0, 340.0);
+        for (position, pressed) in [(source_port, true), (target_port, false)] {
+            let mut output = ctx.run_ui(
+                egui::RawInput {
+                    screen_rect: Some(viewport),
+                    events: vec![
+                        egui::Event::PointerMoved(position),
+                        egui::Event::PointerButton {
+                            pos: position,
+                            button: PointerButton::Primary,
+                            pressed,
+                            modifiers: egui::Modifiers::default(),
+                        },
+                    ],
+                    ..Default::default()
+                },
+                |ui| {
+                    let response = ui.interact(
+                        viewport,
+                        egui::Id::unique("port-test-canvas"),
+                        Sense::click_and_drag(),
+                    );
+                    app.handle_canvas_input(ui, &response, viewport, viewport_size, Rect::NOTHING);
+                },
+            );
+            output.textures_delta.clear();
+            assert!(app.inspector_collapsed);
+            assert!(app.interaction.selected_card_ids().next().is_none());
+        }
+        assert!(app.gesture.is_none());
+        assert!(
+            matches!(app.dialog, Some(EditorDialog::ChooseRelationshipKind { source_id: 4, target_id: 8, position }) if position == target_port)
+        );
+    }
+
+    #[test]
+    fn preferences_open_as_an_embedded_window_without_native_viewports() {
+        let app = test_app();
+        app.open_settings_window();
+        let ctx = egui::Context::default();
+        ctx.set_embed_viewports(true);
+        let mut output = ctx.run_ui(egui::RawInput::default(), |ui| {
+            app.settings_window(ui.ctx())
+        });
+        output.textures_delta.clear();
+        assert!(!output.shapes.is_empty());
+        assert!(app.preferences.lock().unwrap().open);
+        assert!(!app.preferences.lock().unwrap().focus_requested);
+        assert!(
+            !output.viewport_output[&egui::ViewportId::ROOT]
+                .commands
+                .contains(&egui::ViewportCommand::Close)
+        );
+    }
+
+    #[test]
+    fn chrome_visuals_keep_text_and_controls_on_the_dark_palette() {
+        let visuals = atlas_visuals();
+        assert!(visuals.dark_mode);
+        assert_eq!(visuals.text_color(), ATLAS_PAPER_SIGNAL);
+        assert_eq!(visuals.panel_fill, ATLAS_GROUND);
+        assert_eq!(visuals.window_fill, ATLAS_SURVEY_SLATE);
+        // WCAG relative luminance contrast for the dimmest ordinary label
+        // against the lightest product panel exceeds 4.5:1.
+        let luminance = |color: Color32| {
+            let linear = |value: u8| {
+                let value = f64::from(value) / 255.0;
+                if value <= 0.04045 {
+                    value / 12.92
+                } else {
+                    ((value + 0.055) / 1.055).powf(2.4)
+                }
+            };
+            0.2126 * linear(color.r()) + 0.7152 * linear(color.g()) + 0.0722 * linear(color.b())
+        };
+        assert!(
+            (luminance(ATLAS_QUIET_GRAPHITE) + 0.05) / (luminance(ATLAS_SURVEY_SLATE) + 0.05) > 4.5
+        );
     }
 
     #[test]
@@ -15793,6 +16599,298 @@ mod tests {
         assert!(camera.scale < 0.24);
     }
 
+    fn authored_layers_test_app(suffix: &str) -> (InfiniteNoteCanvasApp, PathBuf) {
+        let mut document = WorkspaceDocument::sample();
+        for (title, start, end) in [("Overview", 50.0, 100.0), ("Detail", 150.0, 200.0)] {
+            let id = document
+                .create_semantic_zoom_layer("current", "organization-landscape", title.to_string())
+                .unwrap();
+            document
+                .update_semantic_zoom_layer_percent_settings(
+                    "current",
+                    "organization-landscape",
+                    &id,
+                    title.to_string(),
+                    SemanticZoomLayerPercentSettings {
+                        active_zoom_range: ZoomPercentRange {
+                            start_percent: start,
+                            end_percent: end,
+                        },
+                        fade_percent: 10.0,
+                    },
+                    1.0,
+                )
+                .unwrap();
+        }
+        let path = std::env::temp_dir().join(format!(
+            "reason-room-layer-{suffix}-{}.json",
+            std::process::id()
+        ));
+        fs::write(&path, document.to_pretty_json().unwrap()).unwrap();
+        let session = WorkspaceSession::load_default(path.clone()).unwrap();
+        let mut app = test_app();
+        app.dataset = session.dataset().clone();
+        app.workspace_state = WorkspaceState::Loaded(Box::new(session));
+        app.refresh_canvas_type_id_index();
+        (app, path)
+    }
+
+    #[test]
+    fn rollup_routes_hidden_child_edge_from_visible_parent_in_the_app() {
+        let (mut app, path) = authored_layers_test_app("rollup-routing");
+        let mut document = app.session().unwrap().document().clone();
+        let layers = document.current_state.lenses[0]
+            .semantic_zoom_layers
+            .clone();
+        document.current_state.lenses[0].placements = vec![
+            infinite_note_canvas_canvas::ConceptPlacement {
+                concept_id: 1,
+                bounds: CanvasRect::new(Point::default(), Point::new(900.0, 800.0)),
+            },
+            infinite_note_canvas_canvas::ConceptPlacement {
+                concept_id: 2,
+                bounds: CanvasRect::new(Point::new(100.0, 100.0), Point::new(200.0, 100.0)),
+            },
+            infinite_note_canvas_canvas::ConceptPlacement {
+                concept_id: 4,
+                bounds: CanvasRect::new(Point::new(1100.0, 100.0), Point::new(200.0, 150.0)),
+            },
+        ];
+        document.current_state.lenses[0].relationships =
+            Some(vec![infinite_note_canvas_canvas::TypedRelationship {
+                id: "rolled".to_string(),
+                source_id: 2,
+                target_id: 4,
+                kind: RelationshipKind::DependsOn,
+                label: "Depends on".to_string(),
+            }]);
+        for (id, index) in [(1, 0), (2, 1), (4, 0)] {
+            document
+                .set_semantic_zoom_card_layer_mode(
+                    "current",
+                    "organization-landscape",
+                    id,
+                    SemanticZoomCardLayerMode::Manual {
+                        layer_ids: vec![layers[index].id.clone()],
+                    },
+                )
+                .unwrap();
+        }
+        fs::write(&path, document.to_pretty_json().unwrap()).unwrap();
+        let session = WorkspaceSession::load_default(path.clone()).unwrap();
+        app.dataset = session.dataset().clone();
+        app.workspace_state = WorkspaceState::Loaded(Box::new(session));
+        app.interaction
+            .set_camera(Camera::new(Point::default(), 0.75));
+        app.roll_up_relationships = true;
+        app.refresh_display_dataset();
+        assert!(app.dataset.card_by_id(2).is_none());
+        assert_eq!(
+            app.active_relationships().len(),
+            1,
+            "Hidden child still supplies the original edge"
+        );
+        let viewport = Rect::from_min_size(Pos2::ZERO, Vec2::new(1400.0, 900.0));
+        let paths = app.visible_relationship_paths(viewport);
+        assert_eq!(paths.len(), 1, "Rollup reaches the routing and paint path");
+        assert_eq!(paths[0].id, "rolled");
+        let route = app
+            .relationship_route_cache
+            .borrow_mut()
+            .route(1, 4)
+            .unwrap()
+            .to_vec();
+        app.interaction
+            .set_camera(Camera::new(Point::new(12.0, 6.0), 0.76));
+        assert_eq!(app.visible_relationship_paths(viewport).len(), 1);
+        assert_eq!(
+            app.relationship_route_cache
+                .borrow_mut()
+                .route(1, 4)
+                .unwrap(),
+            route
+        );
+        fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn card_context_layer_action_saves_a_centered_resize_in_the_active_view() {
+        let (mut app, path) = authored_layers_test_app("context-resize");
+        let layer = app.session().unwrap().document().current_state.lenses[0].semantic_zoom_layers
+            [0]
+        .id
+        .clone();
+        let staged = app
+            .session()
+            .unwrap()
+            .stage_set_semantic_zoom_card_layer_mode(
+                1,
+                SemanticZoomCardLayerMode::Manual {
+                    layer_ids: vec![layer],
+                },
+            )
+            .unwrap();
+        app.commit_staged_action(Ok(staged), Some(1), false, "test");
+        let before = app.session().unwrap().document().current_state.lenses[0]
+            .placements
+            .iter()
+            .find(|placement| placement.concept_id == 1)
+            .unwrap()
+            .bounds;
+        app.apply_canvas_context_menu_action(CanvasContextMenuAction::ShiftCardLayer(1, true));
+        let session = app.session().unwrap();
+        let after = session.document().current_state.lenses[0]
+            .placements
+            .iter()
+            .find(|placement| placement.concept_id == 1)
+            .unwrap()
+            .bounds;
+        assert_ne!(before.size, after.size);
+        assert!((before.center().x - after.center().x).abs() < 0.001);
+        assert_eq!(
+            session
+                .document()
+                .semantic_zoom_card_layer_visibility(
+                    session.active_version_id(),
+                    session.active_lens_id(),
+                    1
+                )
+                .unwrap()
+                .base_layer_id
+                .as_deref(),
+            Some("layer-detail")
+        );
+        let saved = WorkspaceDocument::parse_json(&fs::read_to_string(&path).unwrap()).unwrap();
+        assert_eq!(&saved, session.document());
+        fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn clicking_create_between_layers_saves_the_chosen_ordinal_and_range() {
+        let (mut app, path) = authored_layers_test_app("insert-input");
+        app.open_layer_cross_section();
+        let ctx = egui::Context::default();
+        let viewport = Rect::from_min_size(Pos2::ZERO, Vec2::new(600.0, 1600.0));
+        let frame = |app: &mut InfiniteNoteCanvasApp, events| {
+            let mut output = ctx.run_ui(
+                egui::RawInput {
+                    screen_rect: Some(viewport),
+                    events,
+                    ..Default::default()
+                },
+                |ui| app.semantic_zoom_layer_cross_section(ui),
+            );
+            output.textures_delta.clear();
+            output
+        };
+        let text_positions = |output: &egui::FullOutput, label: &str| {
+            output
+                .shapes
+                .iter()
+                .filter_map(|shape| {
+                    if let egui::Shape::Text(text) = &shape.shape
+                        && text.galley.job.text == label
+                    {
+                        return Some(text.pos + text.galley.size() * 0.5);
+                    }
+                    None
+                })
+                .collect::<Vec<_>>()
+        };
+        let initial = frame(&mut app, vec![]);
+        let insert = text_positions(&initial, "+ Create layer here")[1];
+        for pressed in [true, false] {
+            let _ = frame(
+                &mut app,
+                vec![
+                    egui::Event::PointerMoved(insert),
+                    egui::Event::PointerButton {
+                        pos: insert,
+                        button: PointerButton::Primary,
+                        pressed,
+                        modifiers: egui::Modifiers::NONE,
+                    },
+                ],
+            );
+        }
+        assert_eq!(app.layer_creation_index, 1);
+        assert_eq!(app.layer_creation_active_zoom_start_percent, 150.0);
+        assert_eq!(app.layer_creation_active_zoom_end_percent, 200.0);
+        app.layer_creation_title = "Inserted through UI".to_string();
+        let form = frame(&mut app, vec![]);
+        let create = text_positions(&form, "Create layer")[0];
+        for pressed in [true, false] {
+            let _ = frame(
+                &mut app,
+                vec![
+                    egui::Event::PointerMoved(create),
+                    egui::Event::PointerButton {
+                        pos: create,
+                        button: PointerButton::Primary,
+                        pressed,
+                        modifiers: egui::Modifiers::NONE,
+                    },
+                ],
+            );
+        }
+        let saved = WorkspaceDocument::parse_json(&fs::read_to_string(&path).unwrap()).unwrap();
+        let layers = &saved.current_state.lenses[0].semantic_zoom_layers;
+        assert_eq!(layers.len(), 3);
+        assert_eq!(layers[1].title, "Inserted through UI");
+        assert_eq!(
+            layers[1].percent_settings.unwrap().active_zoom_range,
+            ZoomPercentRange {
+                start_percent: 150.0,
+                end_percent: 200.0
+            }
+        );
+        assert_eq!(
+            layers[2].percent_settings.unwrap().active_zoom_range,
+            ZoomPercentRange {
+                start_percent: 200.0,
+                end_percent: 250.0
+            }
+        );
+        fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn painted_summary_combines_size_and_layer_fade_and_shift_border_is_amber() {
+        let ctx = egui::Context::default();
+        let mut card = test_card(Point::default());
+        card.summary = "Visible summary".to_string();
+        let mut output = ctx.run_ui(egui::RawInput::default(), |ui| {
+            paint_card(
+                ui.painter(),
+                Rect::from_min_size(Pos2::new(20.0, 20.0), Vec2::new(150.0, 80.0)),
+                &card,
+                CardPaintState {
+                    selected: true,
+                    hovered: false,
+                    relationship_port_hovered: None,
+                    resize_from_center: None,
+                    layer_shifting: true,
+                    detail_level: SemanticZoomLevel::Card,
+                    opacity: 0.8,
+                },
+            );
+        });
+        output.textures_delta.clear();
+        assert!(output.shapes.iter().any(|shape| matches!(&shape.shape, egui::Shape::Rect(rect) if rect.stroke.color == color_with_opacity(ATLAS_CONTROL_AMBER, 0.8))));
+        let summary = output
+            .shapes
+            .iter()
+            .find_map(|shape| match &shape.shape {
+                egui::Shape::Text(text) if text.galley.job.text == "Visible summary" => Some(text),
+                _ => None,
+            })
+            .expect("A roomy displayed card paints its summary even below global detail zoom");
+        assert_eq!(
+            summary.fallback_color,
+            color_with_opacity(ATLAS_QUIET_GRAPHITE, 0.4)
+        );
+    }
+
     fn test_app() -> InfiniteNoteCanvasApp {
         InfiniteNoteCanvasApp {
             dataset: CanvasDataset::from_records(Vec::new(), Vec::new()),
@@ -15803,6 +16901,9 @@ mod tests {
             dialog: None,
             inspector_draft: None,
             card_clipboard: None,
+            publish_card_clipboard: false,
+            last_canvas_pointer: None,
+            last_canvas_viewport: None,
             pending_concept_name_focus_id: None,
             pending_creation_name_focus: None,
             inspector_collapsed: false,
@@ -15819,6 +16920,7 @@ mod tests {
             #[cfg(any(target_os = "macos", target_os = "windows"))]
             _native_application_menu: None,
             show_all_cards: false,
+            roll_up_relationships: false,
             card_creation_draft: ConceptEditorDraft {
                 title: String::new(),
                 type_id: None,
@@ -15834,6 +16936,7 @@ mod tests {
             layer_creation_fade_percent: 10.0,
             layer_cross_section_drafts: Vec::new(),
             layer_cross_section_creating: false,
+            layer_creation_index: 0,
             canvas_search_query: String::new(),
             canvas_search_match_index: 0,
             canvas_type_filter_ids: BTreeSet::new(),
@@ -15853,6 +16956,7 @@ mod tests {
             boundary_inspector_draft: None,
             hover_target: None,
             lens_cameras: HashMap::new(),
+            lens_canvas_controls: HashMap::new(),
             canvas_viewport_size: Point::default(),
             fit_example_on_next_frame: false,
             relationship_route_cache: RefCell::default(),

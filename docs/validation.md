@@ -122,6 +122,49 @@ subsequently confirmed that the relationship-click bug was fixed in manual
 evaluation. Browser and other platform interaction checks were not performed
 for this change.
 
+## Interaction Repair Evidence — 2026-11-02
+
+The interaction repairs below are implemented following `9f062b1`, with
+integrated automated evidence on Apple Silicon macOS and Rust 1.97.1.
+Formatting, all 328 workspace tests (165 app, 112 canvas, 5 CLI and 46 session),
+the workspace build, strict Clippy, the documentation guard and
+`git diff --check` passed. `./start.sh --web --build-only` also passed.
+
+On November 2 the user deferred native/browser launches to their own validation
+after implementation. No interactive visual result is claimed. An earlier
+`./start.sh --web` attempt built the site but could not bind localhost under
+the sandbox (`Operation not permitted`); the escalated retry was interrupted
+before a server handle was returned. No native launch was attempted for this
+change. Windows Edge, hosted GitHub Pages and real platform clipboard checks
+remain deferred.
+
+| Requested behavior | Evidence and remaining verification |
+| --- | --- |
+| Browser preferences access (bug 1) | Toolbar exposes Preferences on all targets; a regression renders the shared controls with embedded viewports and confirms no root Close command. Real browser interaction remains to be checked. |
+| Remove Show inspector (bug 2) | Removed the toolbar control; selecting a canvas entity remains the inspector entry point. |
+| Edge-port clicks preserve inspector (bug 3) | Deterministic egui press/release regression drags between ports, preserves collapsed inspector and selection, and opens the kind chooser at the drop pointer. Relationship creation commits preserve selection. |
+| Boundaries between layers (bug 4) | Inspector assigns optional Lens-local `layer_id`; model regression `boundary_layer_changes_validate_roundtrip_and_clear_when_layer_deleted` checks persistence, atomic rejection of unknown layers and deletion cleanup. Drawing and hit testing use the same layer opacity; View all restores boundaries. No manual boundary reassignment check. |
+| Independent Views (bug 5) | User clarification: card content shared, position and relationships local to each View; removal deletes that View's card reference. Model regression creates, changes kind, removes connections independently in cloned Views, checks shared title projection, serializes/reloads, and checks regular/semantic projection counts. App integration switches Views and restores independent search, type filters, View all and relationship rollup; session tests verify reference removal preserves other Views/shared content and undo restores the reference. Explicit CLI/MCP concept deletion remains permanent; all 5 CLI and 46 session tests passed. Interactive View workflows remain to be checked. |
+| System light-mode text contrast (bug 6) | Application fixes the egui theme to Dark to match its painted dark surfaces. A luminance test verifies ordinary dim labels exceed 4.5:1 against the lightest panel. Windows Edge rendering remains untested. |
+| Cross-View/version paste (bugs 7, 11) | Model regression pastes captured cards into a blank View as shared references and into another Version as independent copies, preserving source placement/content and relationships. App integration switches to a blank View and pastes a shared reference at a specified canvas point. Interactive cross-View/version workflows remain to be checked. |
+| Native/local browser paste (bug 8) | Headless egui regression feeds semantic Copy, verifies a nonempty platform CopyText command, then feeds semantic Paste and physical Command/Ctrl+V fallback; each paste creates a card. This checks application/platform-event handling, not the operating system or browser clipboard integration. Native and local-browser clipboard checks remain pending. |
+| Paste at pointer, avoid overlap (bug 9) | Deterministic regressions anchor pasted visual bounds at the requested cursor point, preserve copied group geometry, and escape origin/occupied-card overlap. Collision geometry includes filtered-out placements, authored layer scaling and minimum painted shells at low zoom. Interactive pointer placement remains to be checked. |
+| Summary size/fade (bug 10) | `summaries_follow_display_size_independently_of_camera_scale` and `summary_fade_uses_displayed_size_continuously` cover size-based onset/fade. `painted_summary_combines_size_and_layer_fade_and_shift_border_is_amber` inspects egui paint output to verify summary alpha combines size and layer opacity below the former global detail threshold. Referenced screenshots inspected; no native/browser visual comparison. |
+| Text field clipboard (bug 12) | A real headless egui TextEdit retains focus with a card selected: Paste inserts summary text, Copy returns the selected text through the platform command, the card selection remains and no card is added. Native/browser clipboard integration remains to be checked. |
+| Cursor relationship-kind chooser (enhancement 1) | Both port drop and inspector Connect open a compact kind list at the pointer. Choices use the endpoint compatibility rules; Cancel and Escape dismiss it. The port event regression verifies chooser state and position. |
+| Relationship parent roll-up filter (enhancement 2) | O-I filter controls a presentation-only projection. `rollup_uses_visible_ancestor_without_forcing_hidden_child_and_preserves_fade` checks two ancestor levels, child fade, collapsed self-edge suppression and unavailable representatives. App regression `rollup_routes_hidden_child_edge_from_visible_parent_in_the_app` verifies the hidden original endpoint survives pre-routing filters, the visible-parent route paints, and cached world geometry remains unchanged across pan/adjacent zoom. No manual filter check. |
+| View all filter toggle (enhancement 3) | Source places the View all checkbox beside O-I in canvas filter controls and removes its toolbar control. Existing `view_all_mode_suspends_semantic_layer_filtering` covers mode behavior; the independent-View controls regression covers per-View state. No manual toggle check. |
+| Chosen zoom-layer insertion (enhancement 4) | `insertion_at_a_chosen_slot_shifts_later_ranges_without_changing_widths` checks ordinal/ranges. `clicking_create_between_layers_saves_the_chosen_ordinal_and_range` sends egui pointer press/release to the second insertion control and Create layer, then reads the saved JSON to verify inserted 150–200% and shifted 200–250% ranges. |
+| Reorder layer ranges (first enhancement 5) | `reorder_moves_the_dragged_range_before_target_without_changing_width` verifies the requested 150–200% layer moves above 100–150% as 50–100%, preserving the other range. UI drop invokes the same staged model action. Real pointer drag not manually checked. |
+| Resize shift cue/context layer movement (second enhancement 5) | Paint-output regression verifies amber shift stroke. Preview uses the same pure layer resolver as the committed resize. `moving_to_an_adjacent_layer_resizes_about_center_and_retains_aspect_ratio` checks resizing and explicit layer assignment; `card_context_layer_action_saves_a_centered_resize_in_the_active_view` invokes the context action and reads persisted JSON. No manual resize/context-menu check. |
+
+Additional focused passing tests: `relationship_port_gesture_preserves_inspector_and_offers_type_at_drop`,
+`preferences_open_as_an_embedded_window_without_native_viewports`, and
+`chrome_visuals_keep_text_and_controls_on_the_dark_palette`.
+The documentation guard passed after updating the interaction guide.
+No Windows, Edge, deployed GitHub Pages, or native visual checks were performed
+for these changes in this entry.
+
 ## Remaining Evidence and Known Limits
 
 - Browser `localStorage` failures are not fully handled. Test blocked storage,

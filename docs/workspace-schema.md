@@ -100,7 +100,7 @@ field schema or new relationship kinds.
 
 | Field | Type | Default / constraint |
 | --- | --- | --- |
-| `id` | String | Required, nonblank; unique within its version. |
+| `id` | String | Required, nonblank; unique within its version or explicit Lens relationship set. |
 | `kind` | String enum | Required; use the exact JSON spellings below. |
 | `source_id` | Unsigned 32-bit integer | Required; an existing concept in this version. |
 | `target_id` | Unsigned 32-bit integer | Required; a different existing concept in this version. |
@@ -116,7 +116,9 @@ field schema or new relationship kinds.
 | `delivers` | Any supported concept types. |
 | `deployed_to` | Any supported concept types. |
 
-Relationships are directed source → target. Self-links and duplicate
+Relationships are directed source → target. IDs and endpoint constraints are
+validated separately for the version set and for each explicit Lens set.
+Self-links and duplicate
 (kind, source, target) combinations are rejected. JSON enum values use
 underscores even where the UI uses spaces or generated identifiers use
 hyphens. Validation does not impose a general tree, a single containment
@@ -130,6 +132,7 @@ parent, or an acyclic `contains` graph.
 | `template` | String enum | Optional; omitted when absent. Persisted template metadata. |
 | `filter` | Object | Default empty filter. |
 | `placements` | Array of placements | Required; can be empty. |
+| `relationships` | Array of relationships | Optional View-local connections; omission inherits the version connections, while `[]` explicitly has none. |
 | `visual_boundaries` | Array of boundaries | Default `[]`; omitted when empty. |
 | `semantic_zoom_layers` | Ordered array of layers | Default `[]`; omitted when empty. |
 | `semantic_zoom_card_modes` | Array of card overrides | Default `[]`; omitted when empty. |
@@ -137,6 +140,14 @@ parent, or an acyclic `contains` graph.
 Template values are `ownership`, `processes_and_dependencies`,
 `services_and_access`, and `deployment`. A template label is not a separate
 stored graph or a guarantee of dynamic query behavior.
+
+Card content belongs to the version and is shared by its Views. Placement,
+boundaries, zoom settings and explicit connections belong to the Lens. The app
+materializes a Lens relationship set on its first connection edit, preserving
+other Views. Cloning a View snapshots its effective connections. Legacy files
+without the optional field retain their existing appearance. A blank View
+starts with an explicit empty set. Removing a card reference from a View also
+removes its incident connections there; the shared concept remains available.
 
 A filter has `concept_type_ids` (known type IDs) and `relationship_kinds`
 (the relationship enums above). Both default to `[]`, are omitted when empty,
@@ -155,7 +166,11 @@ Bounds require all of these numbers in canvas units:
 Origins and sizes must be finite; both size components must be positive.
 A boundary requires nonblank `id` and `title` and valid `bounds`; `summary`
 defaults to `""`. Boundary IDs are unique within the lens. A boundary stores
-no member IDs and never implies a typed relationship.
+no member IDs and never implies a typed relationship. Optional `layer_id`
+assigns the boundary to one existing semantic zoom layer in the same lens;
+omitted or `null` keeps it as master context across all layers. Unknown layer
+IDs are rejected. Deleting the assigned layer returns its boundaries to master
+context. This optional field preserves compatibility with existing documents.
 
 ### Semantic Zoom Layer
 

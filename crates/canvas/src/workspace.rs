@@ -144,6 +144,9 @@ pub struct WorkspaceLens {
     #[serde(default)]
     pub filter: LensFilter,
     pub placements: Vec<ConceptPlacement>,
+    /// View-local connections. Missing in legacy files means the version connections.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub relationships: Option<Vec<TypedRelationship>>,
     /// Named spatial context in this Lens. A visual boundary does not create
     /// membership, responsibility, ownership, or a graph relationship.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -164,6 +167,8 @@ pub struct WorkspaceLens {
 /// inside, outside, or across a boundary without changing a workspace fact.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct VisualBoundary {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub layer_id: Option<String>,
     pub id: String,
     pub title: String,
     #[serde(default)]
@@ -530,6 +535,7 @@ pub struct DeletedConcept {
     pub concept_index: usize,
     pub concept: WorkspaceConcept,
     pub relationships: Vec<DeletedTypedRelationship>,
+    pub lens_relationships: Vec<(String, DeletedTypedRelationship)>,
     pub placements: Vec<DeletedConceptPlacement>,
     pub card_layer_modes: Vec<DeletedSemanticZoomCardLayerMode>,
 }
@@ -698,6 +704,7 @@ impl WorkspaceDocument {
                 concepts: Vec::new(),
                 relationships: Vec::new(),
                 lenses: vec![WorkspaceLens {
+                    relationships: None,
                     id: "canvas".to_string(),
                     title: "Canvas".to_string(),
                     template: None,
@@ -915,6 +922,94 @@ impl WorkspaceDocument {
             })
     }
 
+    pub fn relationships_in_lens(
+        &self,
+        version_id: &str,
+        lens_id: &str,
+    ) -> Result<&[TypedRelationship], WorkspaceError> {
+        let version = self.version(version_id)?;
+        let lens = version
+            .lenses
+            .iter()
+            .find(|lens| lens.id == lens_id)
+            .ok_or_else(|| WorkspaceError::MissingLens {
+                version_id: version_id.to_string(),
+                lens_id: lens_id.to_string(),
+            })?;
+        Ok(lens
+            .relationships
+            .as_deref()
+            .unwrap_or(&version.relationships))
+    }
+
+    /// Run an existing graph mutation against one isolated view, then retain
+    /// only that view's connections and presentation updates in the candidate.
+    fn mutate_lens_relationships<T>(
+        &mut self,
+        version_id: &str,
+        lens_id: &str,
+        mutation: impl FnOnce(&mut Self) -> Result<T, WorkspaceError>,
+    ) -> Result<T, WorkspaceError> {
+        self.validate()?;
+        let mut scoped = self.clone();
+        let relationships = self.relationships_in_lens(version_id, lens_id)?.to_vec();
+        let version = scoped.version_mut(version_id)?;
+        let mut lens = version
+            .lenses
+            .iter()
+            .find(|lens| lens.id == lens_id)
+            .unwrap()
+            .clone();
+        lens.relationships = None;
+        version.relationships = relationships;
+        version.lenses = vec![lens];
+        let result = mutation(&mut scoped)?;
+        let version = scoped.version(version_id)?;
+        let mut lens = version.lenses[0].clone();
+        lens.relationships = Some(version.relationships.clone());
+        let mut candidate = self.clone();
+        *candidate.lens_mut(version_id, lens_id)? = lens;
+        candidate.validate()?;
+        *self = candidate;
+        Ok(result)
+    }
+
+    pub fn link_concepts_in_lens(
+        &mut self,
+        version_id: &str,
+        lens_id: &str,
+        source_id: u32,
+        target_id: u32,
+        kind: RelationshipKind,
+    ) -> Result<TypedRelationship, WorkspaceError> {
+        self.mutate_lens_relationships(version_id, lens_id, |document| {
+            document.link_concepts(version_id, source_id, target_id, kind)
+        })
+    }
+
+    pub fn change_relationship_kind_in_lens(
+        &mut self,
+        version_id: &str,
+        lens_id: &str,
+        relationship_id: &str,
+        kind: RelationshipKind,
+    ) -> Result<TypedRelationship, WorkspaceError> {
+        self.mutate_lens_relationships(version_id, lens_id, |document| {
+            document.change_relationship_kind(version_id, relationship_id, kind)
+        })
+    }
+
+    pub fn remove_relationship_in_lens(
+        &mut self,
+        version_id: &str,
+        lens_id: &str,
+        relationship_id: &str,
+    ) -> Result<TypedRelationship, WorkspaceError> {
+        self.mutate_lens_relationships(version_id, lens_id, |document| {
+            document.remove_relationship(version_id, relationship_id)
+        })
+    }
+
     pub fn relationships_for_concept(
         &self,
         version_id: &str,
@@ -1093,9 +1188,13 @@ impl WorkspaceDocument {
                 version_id: version_id.to_string(),
                 lens_id: source_lens_id.to_string(),
             })?;
+        let relationships = candidate
+            .relationships_in_lens(version_id, source_lens_id)?
+            .to_vec();
         let version = candidate.version_mut(version_id)?;
         let lens_id = next_lens_id(&title, &version.lenses);
         let mut lens = source_lens;
+        lens.relationships = Some(relationships);
         lens.id = lens_id.clone();
         lens.title = title;
         version.lenses.push(lens);
@@ -1121,6 +1220,7 @@ impl WorkspaceDocument {
         let version = candidate.version_mut(version_id)?;
         let lens_id = next_lens_id(&title, &version.lenses);
         version.lenses.push(WorkspaceLens {
+            relationships: Some(Vec::new()),
             id: lens_id.clone(),
             title,
             template: None,
@@ -1189,6 +1289,31 @@ impl WorkspaceDocument {
         concept_ids: &[u32],
         world_delta: Point,
     ) -> Result<Vec<u32>, WorkspaceError> {
+        let source = self.clone();
+        self.copy_concepts_from_lens(
+            &source,
+            version_id,
+            lens_id,
+            version_id,
+            lens_id,
+            concept_ids,
+            world_delta,
+        )
+    }
+
+    /// Imports independent card copies from a captured source view into a destination
+    /// view/version. This uses the captured content even if the source later changes.
+    #[allow(clippy::too_many_arguments)]
+    pub fn copy_concepts_from_lens(
+        &mut self,
+        source: &Self,
+        source_version_id: &str,
+        source_lens_id: &str,
+        version_id: &str,
+        lens_id: &str,
+        concept_ids: &[u32],
+        world_delta: Point,
+    ) -> Result<Vec<u32>, WorkspaceError> {
         self.validate()?;
         if concept_ids.is_empty() {
             return validation("select at least one card to copy".to_string());
@@ -1203,11 +1328,11 @@ impl WorkspaceDocument {
         }
 
         let mut candidate = self.clone();
-        let version = candidate.version_mut(version_id)?;
+        let source_version = source.version(source_version_id)?;
         let source_concepts = concept_ids
             .iter()
             .map(|concept_id| {
-                version
+                source_version
                     .concepts
                     .iter()
                     .find(|concept| concept.id == *concept_id)
@@ -1218,10 +1343,10 @@ impl WorkspaceDocument {
                     })
             })
             .collect::<Result<Vec<_>, _>>()?;
-        let source_lens = version
+        let source_lens = source_version
             .lenses
             .iter()
-            .find(|lens| lens.id == lens_id)
+            .find(|lens| lens.id == source_lens_id)
             .cloned()
             .ok_or_else(|| WorkspaceError::MissingLens {
                 version_id: version_id.to_string(),
@@ -1243,6 +1368,10 @@ impl WorkspaceDocument {
             })
             .collect::<Result<Vec<_>, _>>()?;
 
+        let share_content = source.workspace_id == self.workspace_id
+            && source_version_id == version_id
+            && source_lens_id != lens_id;
+        let version = candidate.version_mut(version_id)?;
         let mut next_concept_id = version
             .concepts
             .iter()
@@ -1253,6 +1382,24 @@ impl WorkspaceDocument {
         let copied_concept_ids = source_concepts
             .into_iter()
             .map(|mut concept| {
+                if share_content
+                    && version
+                        .concepts
+                        .iter()
+                        .any(|existing| existing.id == concept.id)
+                    && version
+                        .lenses
+                        .iter()
+                        .find(|lens| lens.id == lens_id)
+                        .is_some_and(|lens| {
+                            !lens
+                                .placements
+                                .iter()
+                                .any(|placement| placement.concept_id == concept.id)
+                        })
+                {
+                    return concept.id;
+                }
                 concept.id = next_concept_id;
                 next_concept_id = next_concept_id.saturating_add(1);
                 let copied_id = concept.id;
@@ -1279,15 +1426,30 @@ impl WorkspaceDocument {
         }
         for (source_concept_id, copied_concept_id) in concept_ids.iter().zip(&copied_concept_ids) {
             for layer in &mut lens.semantic_zoom_layers {
-                if layer.concept_ids.contains(source_concept_id) {
+                if source_lens.semantic_zoom_layers.iter().any(|source_layer| {
+                    source_layer.id == layer.id
+                        && source_layer.concept_ids.contains(source_concept_id)
+                }) {
                     layer.concept_ids.push(*copied_concept_id);
                 }
             }
-            if let Some(mode) = lens
+            if let Some(mode) = source_lens
                 .semantic_zoom_card_modes
                 .iter()
                 .find(|entry| entry.concept_id == *source_concept_id)
                 .map(|entry| entry.mode.clone())
+                .filter(|mode| match mode {
+                    SemanticZoomCardLayerMode::Manual { layer_ids } => layer_ids.iter().all(|id| {
+                        lens.semantic_zoom_layers
+                            .iter()
+                            .any(|layer| &layer.id == id)
+                    }),
+                    SemanticZoomCardLayerMode::Dedicated { layer_id } => lens
+                        .semantic_zoom_layers
+                        .iter()
+                        .any(|layer| &layer.id == layer_id),
+                    _ => true,
+                })
             {
                 lens.semantic_zoom_card_modes
                     .push(SemanticZoomCardLayerModeEntry {
@@ -1371,8 +1533,10 @@ impl WorkspaceDocument {
                     })
             })
             .collect();
-        let relationships = version
+        let relationships = lens
             .relationships
+            .as_deref()
+            .unwrap_or(&version.relationships)
             .iter()
             .filter(|relationship| {
                 visible_concept_ids.contains(&relationship.source_id)
@@ -1400,6 +1564,16 @@ impl WorkspaceDocument {
         version_id: &str,
         lens_id: &str,
         scale: f32,
+    ) -> Result<SemanticZoomFrame, WorkspaceError> {
+        self.semantic_zoom_frame_with_relationship_rollup(version_id, lens_id, scale, false)
+    }
+
+    pub fn semantic_zoom_frame_with_relationship_rollup(
+        &self,
+        version_id: &str,
+        lens_id: &str,
+        scale: f32,
+        roll_up_relationships: bool,
     ) -> Result<SemanticZoomFrame, WorkspaceError> {
         self.validate()?;
         let version = self.version(version_id)?;
@@ -1457,8 +1631,15 @@ impl WorkspaceDocument {
             }
         }
 
+        let parent_by_child =
+            card_parent_ids(candidates.iter().map(|(id, (_, bounds))| (*id, *bounds)));
+        let mut relationship_endpoints_by_id = BTreeMap::new();
         let mut relationship_opacity_by_id = BTreeMap::new();
-        for relationship in &version.relationships {
+        for relationship in lens
+            .relationships
+            .as_deref()
+            .unwrap_or(&version.relationships)
+        {
             if !lens.filter.includes_relationship_kind(relationship.kind)
                 || !candidates.contains_key(&relationship.source_id)
                 || !candidates.contains_key(&relationship.target_id)
@@ -1474,12 +1655,34 @@ impl WorkspaceDocument {
                     .map(|layer_index| context_opacity_for_layer(&layers, layer_index))
                     .unwrap_or_default()
             };
+            let endpoint = |mut id| {
+                if roll_up_relationships {
+                    while presentation_by_concept_id
+                        .get(&id)
+                        .is_none_or(|(opacity, _)| *opacity <= 0.0)
+                    {
+                        let parent = parent_by_child.get(&id)?;
+                        id = *parent;
+                    }
+                }
+                Some(id)
+            };
+            let Some(source_id) = endpoint(relationship.source_id) else {
+                continue;
+            };
+            let Some(target_id) = endpoint(relationship.target_id) else {
+                continue;
+            };
+            if source_id == target_id {
+                continue;
+            }
+            relationship_endpoints_by_id.insert(relationship.id.as_str(), (source_id, target_id));
             let source_opacity = presentation_by_concept_id
-                .get(&relationship.source_id)
+                .get(&source_id)
                 .map(|(opacity, _)| *opacity)
                 .unwrap_or_default();
             let target_opacity = presentation_by_concept_id
-                .get(&relationship.target_id)
+                .get(&target_id)
                 .map(|(opacity, _)| *opacity)
                 .unwrap_or_default();
             let relationship_opacity = layer_opacity.max(source_opacity).max(target_opacity);
@@ -1487,6 +1690,9 @@ impl WorkspaceDocument {
                 continue;
             }
             relationship_opacity_by_id.insert(relationship.id.as_str(), relationship_opacity);
+            if roll_up_relationships {
+                continue;
+            }
             for concept_id in [relationship.source_id, relationship.target_id] {
                 let entry = presentation_by_concept_id.entry(concept_id).or_insert((
                     relationship_opacity,
@@ -1546,8 +1752,10 @@ impl WorkspaceDocument {
                 })
             })
             .collect::<Vec<_>>();
-        let relationships = version
+        let relationships = lens
             .relationships
+            .as_deref()
+            .unwrap_or(&version.relationships)
             .iter()
             .filter_map(|relationship| {
                 let opacity = relationship_opacity_by_id.get(relationship.id.as_str())?;
@@ -1555,8 +1763,8 @@ impl WorkspaceDocument {
                     id: relationship.id.clone(),
                     kind: relationship.kind,
                     label: relationship.label.clone(),
-                    source_id: relationship.source_id,
-                    target_id: relationship.target_id,
+                    source_id: relationship_endpoints_by_id[relationship.id.as_str()].0,
+                    target_id: relationship_endpoints_by_id[relationship.id.as_str()].1,
                     opacity: *opacity,
                 })
             })
@@ -1600,6 +1808,57 @@ impl WorkspaceDocument {
         Ok(id)
     }
 
+    /// Inserts a new layer at an authored position, retaining the new range
+    /// and shifting later ranges only when required to make room.
+    pub fn insert_semantic_zoom_layer(
+        &mut self,
+        version_id: &str,
+        lens_id: &str,
+        layer_id: &str,
+        index: usize,
+    ) -> Result<(), WorkspaceError> {
+        let mut candidate = self.clone();
+        let layers = &mut candidate
+            .lens_mut(version_id, lens_id)?
+            .semantic_zoom_layers;
+        let source = layers
+            .iter()
+            .position(|layer| layer.id == layer_id)
+            .ok_or_else(|| WorkspaceError::MissingSemanticZoomLayer {
+                version_id: version_id.to_string(),
+                lens_id: lens_id.to_string(),
+                layer_id: layer_id.to_string(),
+            })?;
+        let layer = layers.remove(source);
+        if index > layers.len() {
+            return validation("Layer insertion index is outside the layer list".to_string());
+        }
+        let mut next_start = effective_percent_settings(&layer)
+            .active_zoom_range
+            .end_percent;
+        layers.insert(index, layer);
+        for layer in layers.iter_mut().skip(index + 1) {
+            let mut settings = layer.percent_settings.unwrap_or_else(|| {
+                percent_settings_from_legacy_fades(layer.fade_in, layer.fade_out)
+            });
+            let width =
+                settings.active_zoom_range.end_percent - settings.active_zoom_range.start_percent;
+            if settings.active_zoom_range.start_percent < next_start {
+                settings.active_zoom_range = ZoomPercentRange {
+                    start_percent: next_start,
+                    end_percent: next_start + width,
+                };
+                layer.percent_settings = Some(settings);
+                layer.fade_in = None;
+                layer.fade_out = None;
+            }
+            next_start = settings.active_zoom_range.end_percent;
+        }
+        candidate.validate()?;
+        *self = candidate;
+        Ok(())
+    }
+
     /// Creates a named visual boundary in one Lens without changing the graph.
     pub fn create_visual_boundary(
         &mut self,
@@ -1619,6 +1878,7 @@ impl WorkspaceDocument {
             let lens = candidate.lens_mut(version_id, lens_id)?;
             let id = next_visual_boundary_id(&title, &lens.visual_boundaries);
             lens.visual_boundaries.push(VisualBoundary {
+                layer_id: None,
                 id: id.clone(),
                 title,
                 summary,
@@ -1629,6 +1889,31 @@ impl WorkspaceDocument {
         candidate.validate()?;
         *self = candidate;
         Ok(id)
+    }
+
+    /// Assigns a visual boundary to a Lens-local layer; None keeps it as master context.
+    pub fn set_visual_boundary_layer(
+        &mut self,
+        version_id: &str,
+        lens_id: &str,
+        boundary_id: &str,
+        layer_id: Option<String>,
+    ) -> Result<(), WorkspaceError> {
+        let mut candidate = self.clone();
+        let boundary = candidate
+            .lens_mut(version_id, lens_id)?
+            .visual_boundaries
+            .iter_mut()
+            .find(|boundary| boundary.id == boundary_id)
+            .ok_or_else(|| WorkspaceError::MissingVisualBoundary {
+                version_id: version_id.to_string(),
+                lens_id: lens_id.to_string(),
+                boundary_id: boundary_id.to_string(),
+            })?;
+        boundary.layer_id = layer_id;
+        candidate.validate()?;
+        *self = candidate;
+        Ok(())
     }
 
     /// Updates the readable label and optional context for one visual boundary.
@@ -1858,7 +2143,38 @@ impl WorkspaceDocument {
             ));
         }
         if source_index != destination_index {
-            let layer = layers.remove(source_index);
+            let target = layers[destination_index]
+                .percent_settings
+                .unwrap_or_else(|| {
+                    percent_settings_from_legacy_fades(
+                        layers[destination_index].fade_in,
+                        layers[destination_index].fade_out,
+                    )
+                })
+                .active_zoom_range;
+            let mut layer = layers.remove(source_index);
+            let mut settings = layer.percent_settings.unwrap_or_else(|| {
+                percent_settings_from_legacy_fades(layer.fade_in, layer.fade_out)
+            });
+            let width =
+                settings.active_zoom_range.end_percent - settings.active_zoom_range.start_percent;
+            let start = if destination_index < source_index {
+                target.start_percent - width
+            } else {
+                target.end_percent
+            };
+            if start < 1.0 {
+                return validation(
+                    "Not enough zoom range before this layer; move its start first.".to_string(),
+                );
+            }
+            settings.active_zoom_range = ZoomPercentRange {
+                start_percent: start,
+                end_percent: start + width,
+            };
+            layer.percent_settings = Some(settings);
+            layer.fade_in = None;
+            layer.fade_out = None;
             layers.insert(destination_index, layer);
         }
         candidate.validate()?;
@@ -2102,9 +2418,8 @@ impl WorkspaceDocument {
     ) -> Result<(), WorkspaceError> {
         self.validate()?;
         let mut candidate = self.clone();
-        let version = candidate.version(version_id)?;
-        let known_relationship_ids: BTreeSet<_> = version
-            .relationships
+        let known_relationship_ids: BTreeSet<_> = candidate
+            .relationships_in_lens(version_id, lens_id)?
             .iter()
             .map(|relationship| relationship.id.as_str())
             .collect();
@@ -2172,6 +2487,11 @@ impl WorkspaceDocument {
                 .extend(removed.relationship_ids.iter().cloned());
         }
         let lens = candidate.lens_mut(version_id, lens_id)?;
+        for boundary in &mut lens.visual_boundaries {
+            if boundary.layer_id.as_deref() == Some(layer_id) {
+                boundary.layer_id = None;
+            }
+        }
         for entry in &mut lens.semantic_zoom_card_modes {
             if let SemanticZoomCardLayerMode::Manual { layer_ids } = &mut entry.mode {
                 layer_ids.retain(|selected_layer_id| selected_layer_id != layer_id);
@@ -2341,8 +2661,10 @@ impl WorkspaceDocument {
             viewport,
         );
 
-        let mut relationships: Vec<_> = version
+        let mut relationships: Vec<_> = lens
             .relationships
+            .as_deref()
+            .unwrap_or(&version.relationships)
             .iter()
             .filter(|relationship| {
                 relationship.source_id == selected_concept_id
@@ -2438,6 +2760,74 @@ impl WorkspaceDocument {
             })?;
         placement.bounds = bounds;
         candidate.validate()?;
+        *self = candidate;
+        Ok(())
+    }
+
+    /// Moves a card to an adjacent authored layer and resizes it to that
+    /// layer's natural world size while retaining aspect ratio and center.
+    pub fn shift_concept_layer(
+        &mut self,
+        version_id: &str,
+        lens_id: &str,
+        concept_id: u32,
+        deeper: bool,
+    ) -> Result<(), WorkspaceError> {
+        let visibility =
+            self.semantic_zoom_card_layer_visibility(version_id, lens_id, concept_id)?;
+        let lens = self
+            .version(version_id)?
+            .lenses
+            .iter()
+            .find(|lens| lens.id == lens_id)
+            .ok_or_else(|| WorkspaceError::MissingLens {
+                version_id: version_id.to_string(),
+                lens_id: lens_id.to_string(),
+            })?;
+        let current = lens
+            .semantic_zoom_layers
+            .iter()
+            .position(|layer| Some(&layer.id) == visibility.base_layer_id.as_ref())
+            .ok_or_else(|| WorkspaceError::Validation("Card has no zoom layer".to_string()))?;
+        let target_index = if deeper {
+            current.checked_add(1)
+        } else {
+            current.checked_sub(1)
+        }
+        .filter(|index| *index < lens.semantic_zoom_layers.len())
+        .ok_or_else(|| WorkspaceError::Validation("No adjacent zoom layer".to_string()))?;
+        let target = &lens.semantic_zoom_layers[target_index];
+        let range = effective_percent_settings(target).active_zoom_range;
+        let target_percent = (range.start_percent + range.end_percent) * 0.5;
+        let target_id = target.id.clone();
+        let bounds = lens
+            .placements
+            .iter()
+            .find(|placement| placement.concept_id == concept_id)
+            .ok_or_else(|| WorkspaceError::MissingPlacement {
+                version_id: version_id.to_string(),
+                lens_id: lens_id.to_string(),
+                concept_id,
+            })?
+            .bounds;
+        let size_ratio = (bounds.size.x / NEW_CARD_BASELINE_SIZE_AT_100_PERCENT.x)
+            .max(bounds.size.y / NEW_CARD_BASELINE_SIZE_AT_100_PERCENT.y);
+        let size = bounds.size * (100.0 / target_percent / size_ratio);
+        let mut candidate = self.clone();
+        candidate.resize_concept_in_lens(
+            version_id,
+            lens_id,
+            concept_id,
+            Rect::new(bounds.origin + (bounds.size - size) * 0.5, size),
+        )?;
+        candidate.set_semantic_zoom_card_layer_mode(
+            version_id,
+            lens_id,
+            concept_id,
+            SemanticZoomCardLayerMode::Manual {
+                layer_ids: vec![target_id],
+            },
+        )?;
         *self = candidate;
         Ok(())
     }
@@ -2729,6 +3119,59 @@ impl WorkspaceDocument {
         Ok(edited_concept)
     }
 
+    /// Removes one view reference while retaining the shared concept and its
+    /// relationships for other views in the version.
+    pub fn remove_concept_from_lens(
+        &mut self,
+        version_id: &str,
+        lens_id: &str,
+        concept_id: u32,
+    ) -> Result<(), WorkspaceError> {
+        self.validate()?;
+        let mut candidate = self.clone();
+        let relationships = candidate
+            .relationships_in_lens(version_id, lens_id)?
+            .to_vec();
+        let incident_relationship_ids = relationships
+            .iter()
+            .filter(|relationship| {
+                relationship.source_id == concept_id || relationship.target_id == concept_id
+            })
+            .map(|relationship| relationship.id.clone())
+            .collect::<BTreeSet<_>>();
+        let lens = candidate.lens_mut(version_id, lens_id)?;
+        if !lens
+            .placements
+            .iter()
+            .any(|placement| placement.concept_id == concept_id)
+        {
+            return Err(WorkspaceError::MissingPlacement {
+                version_id: version_id.to_string(),
+                lens_id: lens_id.to_string(),
+                concept_id,
+            });
+        }
+        lens.relationships = Some(
+            relationships
+                .into_iter()
+                .filter(|relationship| !incident_relationship_ids.contains(&relationship.id))
+                .collect(),
+        );
+        lens.placements
+            .retain(|placement| placement.concept_id != concept_id);
+        lens.semantic_zoom_card_modes
+            .retain(|entry| entry.concept_id != concept_id);
+        for layer in &mut lens.semantic_zoom_layers {
+            layer.concept_ids.retain(|id| *id != concept_id);
+            layer
+                .relationship_ids
+                .retain(|id| !incident_relationship_ids.contains(id));
+        }
+        candidate.validate()?;
+        *self = candidate;
+        Ok(())
+    }
+
     pub fn delete_concept(
         &mut self,
         version_id: &str,
@@ -2765,7 +3208,36 @@ impl WorkspaceDocument {
 
             let mut placements = Vec::new();
             let mut card_layer_modes = Vec::new();
+            let mut lens_relationships = Vec::new();
             for lens in &mut version.lenses {
+                if let Some(local) = &mut lens.relationships {
+                    let removed = local
+                        .iter()
+                        .enumerate()
+                        .filter(|(_, relationship)| {
+                            relationship.source_id == concept_id
+                                || relationship.target_id == concept_id
+                        })
+                        .map(|(index, relationship)| {
+                            (
+                                lens.id.clone(),
+                                DeletedTypedRelationship {
+                                    index,
+                                    relationship: relationship.clone(),
+                                },
+                            )
+                        })
+                        .collect::<Vec<_>>();
+                    let ids: BTreeSet<_> = removed
+                        .iter()
+                        .map(|(_, deleted)| deleted.relationship.id.clone())
+                        .collect();
+                    local.retain(|relationship| !ids.contains(&relationship.id));
+                    for layer in &mut lens.semantic_zoom_layers {
+                        layer.relationship_ids.retain(|id| !ids.contains(id));
+                    }
+                    lens_relationships.extend(removed);
+                }
                 placements.extend(
                     lens.placements
                         .iter()
@@ -2815,6 +3287,7 @@ impl WorkspaceDocument {
                 concept_index,
                 concept,
                 relationships,
+                lens_relationships,
                 placements,
                 card_layer_modes,
             })
@@ -2874,6 +3347,33 @@ impl WorkspaceDocument {
                         .insert(deleted.index, deleted.relationship);
                 }
 
+                let mut local_relationships = deletion.lens_relationships.clone();
+                local_relationships.sort_by(|left, right| {
+                    left.0.cmp(&right.0).then(left.1.index.cmp(&right.1.index))
+                });
+                for (lens_id, deleted) in local_relationships {
+                    let lens = version
+                        .lenses
+                        .iter_mut()
+                        .find(|lens| lens.id == lens_id)
+                        .ok_or_else(|| WorkspaceError::MissingLens {
+                            version_id: deletion.version_id.clone(),
+                            lens_id,
+                        })?;
+                    let relationships = lens.relationships.as_mut().ok_or_else(|| {
+                        invalid_deletion_receipt(deletion, "view-local relationship set is missing")
+                    })?;
+                    if deleted.index > relationships.len()
+                        || (deleted.relationship.source_id != deletion.concept.id
+                            && deleted.relationship.target_id != deletion.concept.id)
+                    {
+                        return Err(invalid_deletion_receipt(
+                            deletion,
+                            "invalid view-local relationship receipt",
+                        ));
+                    }
+                    relationships.insert(deleted.index, deleted.relationship);
+                }
                 let mut placements = deletion.placements.clone();
                 placements.sort_by(|first, second| {
                     first
@@ -3074,6 +3574,7 @@ impl WorkspaceDocument {
                 relationships,
                 lenses: vec![
                     WorkspaceLens {
+                        relationships: None,
                         id: "organization-landscape".to_string(),
                         title: "Organization Landscape".to_string(),
                         template: Some(LensTemplate::Ownership),
@@ -3084,6 +3585,7 @@ impl WorkspaceDocument {
                         semantic_zoom_card_modes: Vec::new(),
                     },
                     WorkspaceLens {
+                        relationships: None,
                         id: "delivery-and-production".to_string(),
                         title: "Delivery and Production".to_string(),
                         template: Some(LensTemplate::Deployment),
@@ -3582,6 +4084,20 @@ fn validate_version(
 
     let mut lens_ids = BTreeSet::new();
     for lens in &version.lenses {
+        let relationship_ids: BTreeSet<_> = if let Some(relationships) = &lens.relationships {
+            let mut local = version.clone();
+            local.relationships = relationships.clone();
+            let mut inherited = lens.clone();
+            inherited.relationships = None;
+            local.lenses = vec![inherited];
+            validate_version(&local, custom_type_ids, context)?;
+            relationships
+                .iter()
+                .map(|relationship| relationship.id.as_str())
+                .collect()
+        } else {
+            relationship_ids.clone()
+        };
         validate_required("lens id", &lens.id)?;
         validate_required("lens title", &lens.title)?;
         if !lens_ids.insert(lens.id.as_str()) {
@@ -3626,6 +4142,17 @@ fn validate_version(
         for boundary in &lens.visual_boundaries {
             validate_required("visual boundary id", &boundary.id)?;
             validate_required("visual boundary title", &boundary.title)?;
+            if let Some(layer_id) = &boundary.layer_id
+                && !lens
+                    .semantic_zoom_layers
+                    .iter()
+                    .any(|layer| &layer.id == layer_id)
+            {
+                return validation(format!(
+                    "boundary {} references unknown zoom layer {}",
+                    boundary.id, layer_id
+                ));
+            }
             if !visual_boundary_ids.insert(boundary.id.as_str()) {
                 return validation(format!(
                     "lens {} in version {} has duplicate visual boundary id {}",
@@ -4522,6 +5049,7 @@ impl LegacyWorkspaceDocument {
             .views
             .into_iter()
             .map(|view| WorkspaceLens {
+                relationships: None,
                 id: view.id,
                 title: view.title,
                 template: None,
@@ -4621,6 +5149,86 @@ mod tests {
     }
 
     #[test]
+    fn view_relationship_creation_kind_and_removal_are_isolated_after_reload() {
+        let mut document = WorkspaceDocument::sample();
+        let original = document.clone();
+        let source = "organization-landscape";
+        let clone = document
+            .create_lens_from("current", source, "Independent connections".to_string())
+            .unwrap();
+        let created = document
+            .link_concepts_in_lens("current", source, 2, 4, RelationshipKind::Owns)
+            .unwrap();
+        assert!(
+            document
+                .relationships_in_lens("current", source)
+                .unwrap()
+                .contains(&created)
+        );
+        assert!(
+            !document
+                .relationships_in_lens("current", &clone)
+                .unwrap()
+                .iter()
+                .any(|relationship| relationship.id == created.id)
+        );
+        document
+            .change_relationship_kind_in_lens(
+                "current",
+                &clone,
+                "rel-portal-api",
+                RelationshipKind::Delivers,
+            )
+            .unwrap();
+        assert_eq!(
+            document
+                .relationships_in_lens("current", source)
+                .unwrap()
+                .iter()
+                .find(|relationship| relationship.id == "rel-portal-api")
+                .unwrap()
+                .kind,
+            RelationshipKind::DependsOn
+        );
+        document
+            .remove_relationship_in_lens("current", source, "rel-release-api")
+            .unwrap();
+        assert!(
+            document
+                .relationships_in_lens("current", &clone)
+                .unwrap()
+                .iter()
+                .any(|relationship| relationship.id == "rel-release-api")
+        );
+        document
+            .edit_concept("current", 5, "service", "Shared title".to_string())
+            .unwrap();
+        let restored = WorkspaceDocument::parse_json(&document.to_pretty_json().unwrap()).unwrap();
+        assert_eq!(restored, document);
+        for lens in [source, clone.as_str()] {
+            assert_eq!(
+                restored
+                    .canvas_dataset("current", lens)
+                    .unwrap()
+                    .card_by_id(5)
+                    .unwrap()
+                    .title,
+                "Shared title"
+            );
+            let projected = restored.canvas_dataset("current", lens).unwrap();
+            let semantic = restored.semantic_zoom_frame("current", lens, 1.0).unwrap();
+            assert_eq!(projected.relationship_count(), semantic.relationships.len());
+        }
+        assert_eq!(
+            restored.current_state.relationships,
+            original.current_state.relationships
+        );
+        let deleted = document.delete_concept("current", 4).unwrap();
+        document.restore_deleted_concept(&deleted).unwrap();
+        assert_eq!(document, restored);
+    }
+
+    #[test]
     fn version_and_lens_crud_preserve_a_valid_document() {
         let mut document = WorkspaceDocument::sample();
         let created_version = document
@@ -4654,6 +5262,7 @@ mod tests {
             .clone();
         copied_lens_record.id = source_lens.id.clone();
         copied_lens_record.title = source_lens.title.clone();
+        copied_lens_record.relationships = source_lens.relationships.clone();
         assert_eq!(copied_lens_record, source_lens);
         document
             .rename_lens("current", &copied_lens, "Delivery overview".to_string())
@@ -4686,6 +5295,59 @@ mod tests {
         assert!(lens.visual_boundaries.is_empty());
         assert!(lens.semantic_zoom_layers.is_empty());
         assert!(lens.semantic_zoom_card_modes.is_empty());
+        document.validate().unwrap();
+    }
+
+    #[test]
+    fn captured_cards_paste_into_other_views_and_versions_without_changing_source() {
+        let mut document = WorkspaceDocument::sample();
+        let source = document.clone();
+        let source_title = source.concept("current", 5).unwrap().title.clone();
+        let view = document
+            .create_empty_lens("current", "Paste destination".to_string())
+            .unwrap();
+        let copied = document
+            .copy_concepts_from_lens(
+                &source,
+                "current",
+                "organization-landscape",
+                "current",
+                &view,
+                &[5],
+                Point::new(100.0, 200.0),
+            )
+            .unwrap();
+        assert_eq!(copied[0], 5);
+        assert_eq!(
+            document.concept("current", copied[0]).unwrap().title,
+            source_title
+        );
+        assert_eq!(
+            document.version("current").unwrap().lenses[0],
+            source.version("current").unwrap().lenses[0]
+        );
+        let version = document
+            .create_version_from("current", "Paste version".to_string())
+            .unwrap();
+        document
+            .edit_concept("current", 5, "service", "Changed after copy".to_string())
+            .unwrap();
+        let lens = document.default_lens_id(&version).unwrap().to_string();
+        let copied = document
+            .copy_concepts_from_lens(
+                &source,
+                "current",
+                "organization-landscape",
+                &version,
+                &lens,
+                &[5],
+                Point::new(300.0, 400.0),
+            )
+            .unwrap();
+        assert_eq!(
+            document.concept(&version, copied[0]).unwrap().title,
+            source_title
+        );
         document.validate().unwrap();
     }
 
@@ -6130,6 +6792,7 @@ mod tests {
             },
         ];
         lens.visual_boundaries = vec![VisualBoundary {
+            layer_id: None,
             id: "boundary-release-frame".to_string(),
             title: "Release frame".to_string(),
             summary: String::new(),
@@ -7129,5 +7792,321 @@ mod tests {
             document.validate(),
             Err(WorkspaceError::Validation(message)) if message.contains("process to a repository")
         ));
+    }
+}
+
+#[cfg(test)]
+mod authored_layer_regressions {
+    use super::*;
+
+    fn add_layer(document: &mut WorkspaceDocument, title: &str, start: f32, end: f32) -> String {
+        let id = document
+            .create_semantic_zoom_layer("current", "organization-landscape", title.to_string())
+            .unwrap();
+        document
+            .update_semantic_zoom_layer_percent_settings(
+                "current",
+                "organization-landscape",
+                &id,
+                title.to_string(),
+                SemanticZoomLayerPercentSettings {
+                    active_zoom_range: ZoomPercentRange {
+                        start_percent: start,
+                        end_percent: end,
+                    },
+                    fade_percent: 10.0,
+                },
+                1.0,
+            )
+            .unwrap();
+        id
+    }
+
+    #[test]
+    fn reorder_moves_the_dragged_range_before_target_without_changing_width() {
+        let mut document = WorkspaceDocument::sample();
+        let first = add_layer(&mut document, "First", 100.0, 150.0);
+        let second = add_layer(&mut document, "Second", 150.0, 200.0);
+        document
+            .reorder_semantic_zoom_layer("current", "organization-landscape", &second, 0)
+            .unwrap();
+        let lens = &document.current_state.lenses[0];
+        assert_eq!(lens.semantic_zoom_layers[0].id, second);
+        assert_eq!(lens.semantic_zoom_layers[1].id, first);
+        let range = document
+            .semantic_zoom_layer_percent_settings("current", "organization-landscape", &second)
+            .unwrap()
+            .active_zoom_range;
+        assert_eq!(
+            range,
+            ZoomPercentRange {
+                start_percent: 50.0,
+                end_percent: 100.0
+            }
+        );
+        assert_eq!(
+            document
+                .semantic_zoom_layer_percent_settings("current", "organization-landscape", &first)
+                .unwrap()
+                .active_zoom_range,
+            ZoomPercentRange {
+                start_percent: 100.0,
+                end_percent: 150.0
+            }
+        );
+    }
+
+    #[test]
+    fn insertion_at_a_chosen_slot_shifts_later_ranges_without_changing_widths() {
+        let mut document = WorkspaceDocument::sample();
+        let first = add_layer(&mut document, "First", 50.0, 100.0);
+        let second = add_layer(&mut document, "Second", 100.0, 150.0);
+        let inserted = add_layer(&mut document, "Inserted", 100.0, 125.0);
+        document
+            .insert_semantic_zoom_layer("current", "organization-landscape", &inserted, 1)
+            .unwrap();
+        let lens = &document.current_state.lenses[0];
+        assert_eq!(
+            lens.semantic_zoom_layers
+                .iter()
+                .map(|layer| layer.id.as_str())
+                .collect::<Vec<_>>(),
+            vec![first.as_str(), inserted.as_str(), second.as_str()]
+        );
+        assert_eq!(
+            document
+                .semantic_zoom_layer_percent_settings("current", "organization-landscape", &second)
+                .unwrap()
+                .active_zoom_range,
+            ZoomPercentRange {
+                start_percent: 125.0,
+                end_percent: 175.0
+            }
+        );
+    }
+
+    #[test]
+    fn boundary_layer_changes_validate_roundtrip_and_clear_when_layer_deleted() {
+        let mut document = WorkspaceDocument::sample();
+        let layer = add_layer(&mut document, "Layer", 50.0, 100.0);
+        let boundary = document
+            .create_visual_boundary(
+                "current",
+                "organization-landscape",
+                "Area".to_string(),
+                String::new(),
+                Rect::new(Point::new(0.0, 0.0), Point::new(800.0, 500.0)),
+            )
+            .unwrap();
+        document
+            .set_visual_boundary_layer(
+                "current",
+                "organization-landscape",
+                &boundary,
+                Some(layer.clone()),
+            )
+            .unwrap();
+        let saved = serde_json::to_string(&document).unwrap();
+        assert_eq!(
+            serde_json::from_str::<WorkspaceDocument>(&saved).unwrap(),
+            document
+        );
+        let unchanged = document.clone();
+        assert!(
+            document
+                .set_visual_boundary_layer(
+                    "current",
+                    "organization-landscape",
+                    &boundary,
+                    Some("missing".to_string())
+                )
+                .is_err()
+        );
+        assert_eq!(document, unchanged);
+        document
+            .delete_semantic_zoom_layer("current", "organization-landscape", &layer)
+            .unwrap();
+        assert!(
+            document.current_state.lenses[0]
+                .visual_boundaries
+                .last()
+                .unwrap()
+                .layer_id
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn moving_to_an_adjacent_layer_resizes_about_center_and_retains_aspect_ratio() {
+        let mut document = WorkspaceDocument::sample();
+        let first = add_layer(&mut document, "First", 50.0, 100.0);
+        let second = add_layer(&mut document, "Second", 100.0, 150.0);
+        document
+            .set_semantic_zoom_card_layer_mode(
+                "current",
+                "organization-landscape",
+                1,
+                SemanticZoomCardLayerMode::Manual {
+                    layer_ids: vec![first],
+                },
+            )
+            .unwrap();
+        let before = document.current_state.lenses[0]
+            .placements
+            .iter()
+            .find(|placement| placement.concept_id == 1)
+            .unwrap()
+            .bounds;
+        document
+            .shift_concept_layer("current", "organization-landscape", 1, true)
+            .unwrap();
+        let after = document.current_state.lenses[0]
+            .placements
+            .iter()
+            .find(|placement| placement.concept_id == 1)
+            .unwrap()
+            .bounds;
+        assert!((before.center().x - after.center().x).abs() < 0.001);
+        assert!((before.center().y - after.center().y).abs() < 0.001);
+        assert!((before.size.x / before.size.y - after.size.x / after.size.y).abs() < 0.001);
+        assert_ne!(before.size, after.size);
+        assert_eq!(
+            document
+                .semantic_zoom_card_layer_visibility("current", "organization-landscape", 1)
+                .unwrap()
+                .base_layer_id,
+            Some(second)
+        );
+    }
+
+    #[test]
+    fn rollup_uses_visible_ancestor_without_forcing_hidden_child_and_preserves_fade() {
+        let mut document = WorkspaceDocument::sample();
+        let overview = add_layer(&mut document, "Overview", 50.0, 100.0);
+        let detail = add_layer(&mut document, "Detail", 150.0, 200.0);
+        let lens = &mut document.current_state.lenses[0];
+        lens.placements = vec![
+            ConceptPlacement {
+                concept_id: 1,
+                bounds: Rect::new(Point::new(0.0, 0.0), Point::new(1000.0, 1000.0)),
+            },
+            ConceptPlacement {
+                concept_id: 2,
+                bounds: Rect::new(Point::new(100.0, 100.0), Point::new(500.0, 500.0)),
+            },
+            ConceptPlacement {
+                concept_id: 3,
+                bounds: Rect::new(Point::new(200.0, 200.0), Point::new(100.0, 100.0)),
+            },
+            ConceptPlacement {
+                concept_id: 4,
+                bounds: Rect::new(Point::new(1200.0, 0.0), Point::new(200.0, 200.0)),
+            },
+        ];
+        document.current_state.relationships = vec![TypedRelationship {
+            id: "rollup".to_string(),
+            kind: RelationshipKind::DependsOn,
+            label: "Depends on".to_string(),
+            source_id: 3,
+            target_id: 4,
+        }];
+        for id in [1, 4] {
+            document
+                .set_semantic_zoom_card_layer_mode(
+                    "current",
+                    "organization-landscape",
+                    id,
+                    SemanticZoomCardLayerMode::Manual {
+                        layer_ids: vec![overview.clone()],
+                    },
+                )
+                .unwrap();
+        }
+        for id in [2, 3] {
+            document
+                .set_semantic_zoom_card_layer_mode(
+                    "current",
+                    "organization-landscape",
+                    id,
+                    SemanticZoomCardLayerMode::Manual {
+                        layer_ids: vec![detail.clone()],
+                    },
+                )
+                .unwrap();
+        }
+        let frame = document
+            .semantic_zoom_frame_with_relationship_rollup(
+                "current",
+                "organization-landscape",
+                0.75,
+                true,
+            )
+            .unwrap();
+        assert!(!frame.cards.iter().any(|card| card.card.id == 3));
+        assert_eq!(frame.relationships[0].source_id, 1);
+        assert_eq!(frame.relationships[0].target_id, 4);
+        let unchanged = document.clone();
+        let normal = document
+            .semantic_zoom_frame("current", "organization-landscape", 0.75)
+            .unwrap();
+        assert!(normal.cards.iter().any(|card| card.card.id == 3));
+        assert_eq!(document, unchanged);
+        // A child fading in is retained at its own opacity, even when the
+        // relationship has a fully visible endpoint in another layer.
+        let frame = document
+            .semantic_zoom_frame_with_relationship_rollup(
+                "current",
+                "organization-landscape",
+                1.45,
+                true,
+            )
+            .unwrap();
+        assert!(
+            (frame
+                .cards
+                .iter()
+                .find(|card| card.card.id == 3)
+                .unwrap()
+                .opacity
+                - 0.5)
+                .abs()
+                < 0.001
+        );
+        document.current_state.relationships[0].target_id = 2;
+        let collapsed = document
+            .semantic_zoom_frame_with_relationship_rollup(
+                "current",
+                "organization-landscape",
+                0.75,
+                true,
+            )
+            .unwrap();
+        assert!(
+            collapsed.relationships.is_empty(),
+            "A rolled edge inside one parent should not become a self-loop"
+        );
+        document.current_state.relationships[0].target_id = 4;
+        document
+            .set_semantic_zoom_card_layer_mode(
+                "current",
+                "organization-landscape",
+                1,
+                SemanticZoomCardLayerMode::Manual {
+                    layer_ids: vec![detail],
+                },
+            )
+            .unwrap();
+        let unavailable = document
+            .semantic_zoom_frame_with_relationship_rollup(
+                "current",
+                "organization-landscape",
+                0.75,
+                true,
+            )
+            .unwrap();
+        assert!(
+            unavailable.relationships.is_empty(),
+            "No visible representative means no dangling relationship"
+        );
     }
 }

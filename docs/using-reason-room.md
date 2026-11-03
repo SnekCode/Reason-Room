@@ -51,12 +51,16 @@ See [example authoring and maintenance](examples.md) for the MCP workflow.
 
 - Use the wheel to zoom around the pointer. Shift plus wheel pans; a middle
   button drag also pans.
-- Select a card to inspect its name, type, summary, and details. Use
-  **Show inspector** if the inspector is collapsed.
+- Select a card, boundary, or relationship to open its inspector.
+- Choose **Preferences** in the toolbar to change display and creation defaults.
+  The browser opens these controls within the page; desktop uses a separate window.
+  Controls use the same dark palette as the canvas, including on systems in light mode.
 - Drag cards to arrange them. Use their resize handles to change their size.
-- Use the zoom controls to move between scales. The **View all** toggle can
-  show all cards and relationships for inspection; choose **Use layers** to
-  return to layer filtering.
+- Use the zoom controls to move between scales. The **View all** checkbox in
+  the canvas filter area shows every card and relationship; clear it to return
+  to layer filtering. The adjacent **O-I** checkbox rolls relationships from
+  hidden child cards up to their nearest visible spatial parent. Children fade
+  according to their own layer, and edges without a visible endpoint disappear.
 - **Undo** and **Redo** apply to workspace edits in the current session.
   They are not a persistent version history and are not MCP tools.
 
@@ -80,18 +84,48 @@ service, environment, and access, plus custom types already saved in a
 workspace. The product's goal of flexible organizational vocabulary is broader
 than the current set of implemented relationship rules.
 
+## Copy Cards Between Views
+
+Select a card (or several cards), then use **Edit → Copy cards** or the normal
+copy shortcut. Paste with **Edit → Paste cards**, the paste shortcut, or the
+canvas context menu. A focused text field keeps ordinary text copy and paste,
+even while a card remains selected.
+
+Pasting into another View in the same Version adds a reference to the shared
+card when it is absent there. Its content stays shared while its placement and
+layer policy belong to the destination View. Pasting into the same View, into
+a View that already contains the card, or into another Version creates a new
+card copy. Relationships are not copied.
+
+Paste places the copied group at the canvas pointer. If that position overlaps
+an existing card, the group moves to the right until it clears the existing
+cards, including cards hidden by filters or zoom layers. This prevents a paste
+from accidentally creating spatial parent/child behavior. With the pointer
+outside the canvas, paste uses its last canvas position or the view center.
+
+Deleting a card removes its reference and incident relationships from the active
+View. The card's shared content and references in other Views remain available.
+Search, type filters, View all, and relationship rollup controls are remembered
+separately for each View during the session.
+
 ## Add Meaning and Visual Context
 
+Drag from a card’s edge port to another card, then choose the relationship type
+from the list beside the pointer. **Cancel** or Escape dismisses the list.
+Connecting ports preserves the existing inspector selection.
+
 To add a relationship using the inspector, select multiple cards, choose the
-primary card, and use **Create depends on** for a target. That creates a
-directed dependency from the primary card to the target. Inspect relationships
+primary card, and use **Connect...** for a target. Choose the kind from the
+list to create a directed relationship from the primary card to the target. Inspect relationships
 to review or change their kind. Available kinds depend on the endpoint types:
 **owns** and **operates** require a team source; **implemented in** requires a
 process source and repository target.
 
 Choose **Create → Boundary** to add a named rectangular area for visual
 context. A boundary has no membership list. Moving a card inside it does not
-assign ownership or create a relationship.
+assign ownership or create a relationship. In the boundary inspector, choose
+**Zoom layer** to move it between saved layers, or **Master context** to keep
+it visible across layers. Boundaries follow their selected layer's fade.
 
 A card drawn inside another card is also spatial composition. It is different
 from an explicit **contains** relationship. Some UI interactions treat spatially
@@ -105,15 +139,27 @@ Visibility still follows the active View and zoom layers.
 
 ## Work with Zoom Layers
 
-Choose **Create → Zoom layer** to add a presentation level. Layers belong to
-one View. Their active ranges and fade distances are expressed as zoom
-percentages: 100 means normal scale, while 25 means a quarter of that scale.
+Open **Layers** and choose **+ Create layer here** at the desired position in
+the list. Enter the name and range, then create it. Later ranges shift when
+needed to make room, retaining their widths. **Create → Zoom layer** opens a
+new layer draft after the existing layers. Layers belong to one View. Their
+active ranges and fade distances use zoom percentages: 100 means normal scale,
+while 25 means a quarter of that scale.
+
+Drag a layer to another row to reorder it. Its range moves before or after the
+target range according to the move direction while retaining its width. For
+example, moving 150–200% above 100–150% makes the moved layer 50–100%.
 
 A card can use Automatic placement into a layer based on its displayed size,
 or Manual selection of named layers. These are presentation choices, not
-changes to the card's type or relationships. Changing a card's size can affect
-its automatic layer choice. Inspect the layer controls and zoom through the
-result to check that the intended context remains understandable.
+changes to the card's type or relationships. During an automatic resize, an
+amber border indicates that the card will change layers. The resize preview
+names the destination layer. Right-click a card and use **Move up a layer and
+resize** or **Move down a layer and resize** for a centered resize that preserves
+its aspect ratio and assigns the adjacent layer explicitly.
+
+Card and boundary summaries fade in according to their displayed size, including
+layer card-size settings. They do not wait for a fixed global zoom threshold.
 
 ## Save and Reopen
 
