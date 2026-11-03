@@ -295,6 +295,17 @@ navigation and broad zoom/viewport combinations were not separately verified;
 they have deterministic UI coverage. Native interaction, Windows/Edge and
 hosted deployment were not checked for this change.
 
+## Compact Relationship Navigation — 2026-11-02
+
+Following `e8bd099`, the two endpoint buttons use arrows only and their shared
+popup is centered on the click location, constrained to stay inside the canvas
+near its edges. Hover tooltips retain endpoint names. The existing navigation
+pointer regression now also checks the popup center and exercises both arrow
+buttons. Formatting, all 340 workspace tests, workspace build, strict Clippy,
+browser build and documentation checks passed on the same Mac/Rust setup.
+No separate manual browser or native visual check is claimed for this compact
+layout adjustment.
+
 ## Remaining Evidence and Known Limits
 
 - Browser `localStorage` failures are not fully handled. Test blocked storage,

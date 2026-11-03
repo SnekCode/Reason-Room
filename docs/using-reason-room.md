@@ -53,7 +53,7 @@ See [example authoring and maintenance](examples.md) for the MCP workflow.
   button drag also pans.
 - Select a card, boundary, or relationship to open its inspector.
 - Click a relationship line to hide the other lines temporarily and show
-  **← Source** and **Target →** at the click point. Hover a button to see its
+  **←** and **→** buttons centered on the click point. Hover a button to see its
   endpoint name; click it to center that endpoint without changing zoom.
   Rolled-up lines navigate to their visible parent endpoints. The buttons close
   after navigation; click the isolated line again to reopen them. Click empty

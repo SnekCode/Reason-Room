@@ -5242,6 +5242,7 @@ impl InfiniteNoteCanvasApp {
         let mut chosen = None;
         let area = egui::Area::new(egui::Id::unique("relationship-endpoint-navigation"))
             .order(egui::Order::Foreground)
+            .pivot(Align2::CENTER_CENTER)
             .fixed_pos(point)
             .constrain_to(viewport)
             .movable(false)
@@ -5252,14 +5253,14 @@ impl InfiniteNoteCanvasApp {
                 egui::Frame::popup(ui.style()).show(ui, |ui| {
                     ui.horizontal(|ui| {
                         if ui
-                            .button("← Source")
+                            .button("←")
                             .on_hover_text(format!("Go to {}", self.concept_label(source_id)))
                             .clicked()
                         {
                             chosen = Some(true);
                         }
                         if ui
-                            .button("Target →")
+                            .button("→")
                             .on_hover_text(format!("Go to {}", self.concept_label(target_id)))
                             .clicked()
                         {
@@ -17098,7 +17099,7 @@ mod tests {
 
     #[test]
     fn relationship_navigation_buttons_pan_to_each_end_without_editing_or_selecting_cards() {
-        for (source, label) in [(true, "← Source"), (false, "Target →")] {
+        for (source, label) in [(true, "←"), (false, "→")] {
             let (mut app, path) =
                 authored_layers_test_app(&format!("relationship-navigation-{source}"));
             app.show_all_cards = true;
@@ -17132,6 +17133,17 @@ mod tests {
             };
             render(&mut app, vec![]);
             let output = render(&mut app, vec![]);
+            let navigation_rect = ctx
+                .memory(|memory| {
+                    memory.area_rect(egui::Id::unique("relationship-endpoint-navigation"))
+                })
+                .unwrap();
+            let expected =
+                canvas_point_to_screen(Point::new(800.0, 700.0), original_camera, viewport);
+            assert!(
+                (navigation_rect.center() - expected).length() < 1.0,
+                "the arrow pair must be centered on the line click"
+            );
             let button = layer_test_text_position(&output, label);
             for pressed in [true, false] {
                 render(
