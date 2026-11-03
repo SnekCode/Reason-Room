@@ -668,6 +668,7 @@ struct InfiniteNoteCanvasApp {
     lens_creation_draft: LensCreationDraft,
     selected_boundary_id: Option<String>,
     selected_relationship_id: Option<String>,
+    selected_relationship_endpoints: Option<(u32, u32)>,
     relationship_navigation: Option<RelationshipNavigation>,
     primary_relationship_concept_id: Option<u32>,
     boundary_inspector_draft: Option<BoundaryInspectorDraft>,
@@ -1409,6 +1410,7 @@ impl InfiniteNoteCanvasApp {
             },
             selected_boundary_id: None,
             selected_relationship_id: None,
+            selected_relationship_endpoints: None,
             relationship_navigation: None,
             primary_relationship_concept_id: None,
             boundary_inspector_draft: None,
@@ -1459,6 +1461,7 @@ impl InfiniteNoteCanvasApp {
         }
         self.selected_boundary_id = None;
         self.selected_relationship_id = None;
+        self.selected_relationship_endpoints = None;
         self.relationship_navigation = None;
         self.boundary_inspector_draft = None;
         let selected_ids: Vec<_> = self.interaction.selected_card_ids().collect();
@@ -1487,6 +1490,7 @@ impl InfiniteNoteCanvasApp {
         self.inspector_collapsed = false;
         self.selected_boundary_id = None;
         self.selected_relationship_id = None;
+        self.selected_relationship_endpoints = None;
         self.relationship_navigation = None;
         self.boundary_inspector_draft = None;
         self.side_pane_mode = SidePaneMode::Inspect;
@@ -1503,6 +1507,7 @@ impl InfiniteNoteCanvasApp {
         self.selected_boundary_id = boundary_id;
         self.inspector_collapsed = self.selected_boundary_id.is_none();
         self.selected_relationship_id = None;
+        self.selected_relationship_endpoints = None;
         self.relationship_navigation = None;
         self.inspector_draft = None;
         self.primary_relationship_concept_id = None;
@@ -1510,6 +1515,14 @@ impl InfiniteNoteCanvasApp {
     }
 
     fn set_relationship_selection(&mut self, relationship_id: Option<String>) {
+        let endpoints = relationship_id.as_deref().and_then(|id| {
+            if self.selected_relationship_id.as_deref() == Some(id) {
+                self.selected_relationship_endpoints
+                    .or_else(|| self.relationship_navigation_endpoints(id))
+            } else {
+                self.relationship_navigation_endpoints(id)
+            }
+        });
         let selected_ids: Vec<_> = self.interaction.selected_card_ids().collect();
         for selected_id in selected_ids {
             self.interaction.remove_selected_card_id(selected_id);
@@ -1520,6 +1533,7 @@ impl InfiniteNoteCanvasApp {
         self.primary_relationship_concept_id = None;
         self.relationship_navigation = None;
         self.selected_relationship_id = relationship_id;
+        self.selected_relationship_endpoints = endpoints;
         self.inspector_collapsed = self.selected_relationship_id.is_none();
         self.side_pane_mode = SidePaneMode::Inspect;
     }
@@ -3405,6 +3419,7 @@ impl InfiniteNoteCanvasApp {
         };
         self.selected_boundary_id = None;
         self.selected_relationship_id = None;
+        self.selected_relationship_endpoints = None;
         self.relationship_navigation = None;
         self.primary_relationship_concept_id = None;
         self.boundary_inspector_draft = None;
@@ -3696,6 +3711,45 @@ impl InfiniteNoteCanvasApp {
                 self.roll_up_relationships,
             )
             .ok()
+    }
+
+    /// Selection overrides relationship presentation only. Cards and saved layer
+    /// rules keep their normal visibility, including after the selected edge's
+    /// layer disappears entirely from the semantic projection.
+    fn relationship_presentation_frame(&self) -> Option<SemanticZoomFrame> {
+        let mut frame = self.semantic_zoom_frame()?;
+        if let Some(id) = self.selected_relationship_id.as_deref()
+            && let Some(relationship) = self.relationship_by_id(id)
+        {
+            let (source_id, target_id) = self
+                .selected_relationship_endpoints
+                .unwrap_or((relationship.source_id, relationship.target_id));
+            let session = self.session()?;
+            let label = session
+                .document()
+                .relationships_in_lens(session.active_version_id(), session.active_lens_id())
+                .ok()?
+                .iter()
+                .find(|edge| edge.id == id)?
+                .label
+                .clone();
+            let selected = infinite_note_canvas_canvas::SemanticZoomRelationship {
+                id: relationship.id,
+                kind: relationship.kind,
+                label,
+                source_id,
+                target_id,
+                opacity: 1.0,
+            };
+            if let Some(existing) = frame.relationships.iter_mut().find(|edge| edge.id == id) {
+                existing.opacity = 1.0;
+                existing.source_id = source_id;
+                existing.target_id = target_id;
+            } else {
+                frame.relationships.push(selected);
+            }
+        }
+        Some(frame)
     }
 
     /// Returns the strongest active authored layer and its display scale. A
@@ -5122,7 +5176,7 @@ impl InfiniteNoteCanvasApp {
     fn visible_relationship_paths(&self, viewport: Rect) -> Vec<RelationshipPaintPath> {
         let relationships = self.active_relationships();
         let relationships = if self.semantic_layer_filtering_is_active() {
-            let Some(frame) = self.semantic_zoom_frame() else {
+            let Some(frame) = self.relationship_presentation_frame() else {
                 return Vec::new();
             };
             relationship_views_in_semantic_frame(&relationships, &frame)
@@ -5137,8 +5191,22 @@ impl InfiniteNoteCanvasApp {
                     .is_none_or(|selected| *selected == relationship.id)
             })
             .filter(|relationship| {
-                self.canvas_concept_id_matches_type_filter(relationship.source_id)
-                    && self.canvas_concept_id_matches_type_filter(relationship.target_id)
+                if self.selected_relationship_id.as_deref() == Some(relationship.id.as_str()) {
+                    let dataset = self
+                        .session()
+                        .map(|session| session.dataset())
+                        .unwrap_or(&self.dataset);
+                    [relationship.source_id, relationship.target_id]
+                        .into_iter()
+                        .all(|id| {
+                            dataset
+                                .card_by_id(id)
+                                .is_some_and(|card| self.canvas_card_matches_type_filter(card))
+                        })
+                } else {
+                    self.canvas_concept_id_matches_type_filter(relationship.source_id)
+                        && self.canvas_concept_id_matches_type_filter(relationship.target_id)
+                }
             })
             .collect();
         let cards = self
@@ -5195,7 +5263,7 @@ impl InfiniteNoteCanvasApp {
     /// Uses the endpoints actually displayed on a rolled-up relationship.
     fn relationship_navigation_endpoints(&self, id: &str) -> Option<(u32, u32)> {
         if self.semantic_layer_filtering_is_active() {
-            let frame = self.semantic_zoom_frame()?;
+            let frame = self.relationship_presentation_frame()?;
             let relationship = frame
                 .relationships
                 .iter()
@@ -5974,7 +6042,7 @@ impl InfiniteNoteCanvasApp {
                 .filter_map(|card_id| displayed_card_world_bounds_by_concept_id.get(&card_id))
                 .map(|bounds| canvas_rect_to_screen(*bounds, camera, viewport)),
         );
-        let semantic_zoom_frame = self.semantic_zoom_frame();
+        let semantic_zoom_frame = self.relationship_presentation_frame();
         let semantic_layer_filtering_is_active = self.semantic_layer_filtering_is_active();
         let scale_rail = semantic_scale_rail(
             viewport,
@@ -17337,6 +17405,148 @@ mod tests {
     }
 
     #[test]
+    fn selected_relationship_stays_opaque_and_interactive_outside_its_zoom_layer() {
+        let (mut app, path) = authored_layers_test_app("pinned-relationship");
+        let relationship = app.active_relationships()[0].clone();
+        let mut document = app.session().unwrap().document().clone();
+        document
+            .current_state
+            .relationships
+            .iter_mut()
+            .find(|edge| edge.id == relationship.id)
+            .unwrap()
+            .label = "Pinned custom label".into();
+        let layer = document.current_state.lenses[0].semantic_zoom_layers[0]
+            .id
+            .clone();
+        for id in [relationship.source_id, relationship.target_id] {
+            document
+                .set_semantic_zoom_card_layer_mode(
+                    "current",
+                    "organization-landscape",
+                    id,
+                    SemanticZoomCardLayerMode::Manual {
+                        layer_ids: vec![layer.clone()],
+                    },
+                )
+                .unwrap();
+        }
+        fs::write(&path, document.to_pretty_json().unwrap()).unwrap();
+        let session = WorkspaceSession::load_default(path.clone()).unwrap();
+        app.dataset = session.dataset().clone();
+        app.workspace_state = WorkspaceState::Loaded(Box::new(session));
+        app.interaction
+            .set_camera(Camera::new(Point::default(), 0.75));
+        app.refresh_display_dataset();
+        app.set_relationship_selection(Some(relationship.id.clone()));
+        let endpoints = app.selected_relationship_endpoints.unwrap();
+        let viewport = Rect::from_min_size(Pos2::ZERO, Vec2::new(6000.0, 5000.0));
+        for scale in [0.75, 0.99, 1.1, 2.5, 0.1] {
+            app.interaction
+                .set_camera(Camera::new(Point::default(), scale));
+            app.refresh_display_dataset();
+            let normal = app.semantic_zoom_frame().unwrap();
+            let pinned = app.relationship_presentation_frame().unwrap();
+            assert_eq!(
+                pinned.cards, normal.cards,
+                "selection must not reveal hidden cards"
+            );
+            let edge = pinned
+                .relationships
+                .iter()
+                .find(|edge| edge.id == relationship.id)
+                .unwrap();
+            assert_eq!(edge.opacity, 1.0);
+            assert_eq!(edge.label, "Pinned custom label");
+            assert_eq!((edge.source_id, edge.target_id), endpoints);
+            assert_eq!(
+                app.relationship_navigation_endpoints(&relationship.id),
+                Some(endpoints)
+            );
+            let paths = app.visible_relationship_paths(viewport);
+            assert_eq!(
+                paths.len(),
+                1,
+                "selected line must remain painted at {scale}"
+            );
+            let point = paths[0].visible_segments[0][0].lerp(paths[0].visible_segments[0][1], 0.5);
+            assert_eq!(
+                app.canvas_relationship_at(point, viewport).as_deref(),
+                Some(relationship.id.as_str())
+            );
+            let ctx = egui::Context::default();
+            let mut output = ctx.run_ui(
+                egui::RawInput {
+                    screen_rect: Some(viewport),
+                    ..Default::default()
+                },
+                |ui| {
+                    let context = SemanticRelationshipPaintContext {
+                        relationship_paths: &paths,
+                        boundary_rects: &[],
+                        selected_relationship_id: Some(&relationship.id),
+                        hover_target: None,
+                        show_relationship_labels: true,
+                    };
+                    paint_semantic_zoom_relationships(ui.painter(), &pinned, &context);
+                    paint_relationship_direction_markers(
+                        ui.painter(),
+                        &paths,
+                        &[],
+                        Some(&relationship.id),
+                        Some(&pinned),
+                    );
+                },
+            );
+            let strokes: Vec<_> = output
+                .shapes
+                .iter()
+                .filter_map(|shape| {
+                    if let egui::Shape::LineSegment { stroke, .. } = &shape.shape {
+                        Some(stroke.color.a())
+                    } else {
+                        None
+                    }
+                })
+                .collect();
+            assert!(!strokes.is_empty());
+            assert!(
+                strokes.iter().all(|alpha| *alpha == 255),
+                "line and arrow strokes must not fade"
+            );
+            for shape in &output.shapes {
+                if let egui::Shape::Text(text) = &shape.shape {
+                    assert!(
+                        text.galley
+                            .job
+                            .sections
+                            .iter()
+                            .all(|section| section.format.color.a() == 255)
+                    );
+                }
+            }
+            output.textures_delta.clear();
+        }
+        // Release the override at a scale where the normal layer has vanished.
+        app.interaction
+            .set_camera(Camera::new(Point::default(), 2.5));
+        app.set_relationship_selection(None);
+        let frame = app.relationship_presentation_frame().unwrap();
+        assert!(
+            !frame
+                .relationships
+                .iter()
+                .any(|edge| edge.id == relationship.id)
+        );
+        assert!(app.selected_relationship_endpoints.is_none());
+        assert_eq!(
+            WorkspaceDocument::parse_json(&fs::read_to_string(&path).unwrap()).unwrap(),
+            document
+        );
+        fs::remove_file(path).unwrap();
+    }
+
+    #[test]
     fn relationship_endpoint_camera_preserves_zoom_and_centers_arbitrary_world_bounds() {
         let bounds = CanvasRect::new(Point::new(-2500.0, 1300.0), Point::new(720.0, 240.0));
         let viewport = Point::new(950.0, 680.0);
@@ -18191,6 +18401,7 @@ mod tests {
             },
             selected_boundary_id: None,
             selected_relationship_id: None,
+            selected_relationship_endpoints: None,
             relationship_navigation: None,
             primary_relationship_concept_id: None,
             boundary_inspector_draft: None,

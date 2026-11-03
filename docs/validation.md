@@ -351,6 +351,25 @@ and a clipped marker. Existing real-pointer checks exercise both oriented
 buttons and verify the centered popup and unchanged navigation behavior. No
 separate manual platform visual check is claimed for this orientation change.
 
+## Selected Relationship Visibility Across Zoom Layers — 2026-11-02
+
+A selected relationship now overrides semantic zoom fading for its line,
+label and direction marker until deselected. Its displayed endpoints are
+captured at selection, including rolled-up parents, so the isolated route and
+navigation remain available after the layer disappears. Card visibility and
+explicit type filters retain their normal behavior. Deselecting restores the
+normal relationship projection. This is transient app presentation state and
+does not change the workspace format or saved layer rules.
+
+On the same Mac/Rust setup, formatting, all 342 workspace tests (175 app,
+115 canvas, 5 CLI, 47 session), workspace build, strict Clippy, browser build
+and documentation checks passed. The regression crosses active, fading and
+fully inactive ranges in both zoom directions. It verifies full-opacity
+painted strokes, retained custom label, hit testing and endpoint navigation,
+unchanged card visibility and saved document, and normal hiding after
+selection is cleared. No separate manual platform visual check is claimed
+for this change.
+
 ## Remaining Evidence and Known Limits
 
 - Browser `localStorage` failures are not fully handled. Test blocked storage,
