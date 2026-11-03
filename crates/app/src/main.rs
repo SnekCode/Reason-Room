@@ -4312,6 +4312,15 @@ impl InfiniteNoteCanvasApp {
                         requested_save_as_canvas = true;
                         ui.close();
                     }
+                    ui.separator();
+                    if ui
+                        .button("Download usage skill")
+                        .on_hover_text("Download the Reason Room agent skill, including setup and browser MCP usage, as a ZIP.")
+                        .clicked()
+                    {
+                        download_browser_skill();
+                        ui.close();
+                    }
                 }
             });
             if let Some(example) = requested_example {
@@ -4347,14 +4356,6 @@ impl InfiniteNoteCanvasApp {
             #[cfg(target_arch = "wasm32")]
             if requested_save_as_canvas {
                 self.open_save_as_browser_canvas_dialog();
-            }
-            #[cfg(target_arch = "wasm32")]
-            if ui
-                .button("Download usage skill")
-                .on_hover_text("Download the Reason Room agent skill, including setup and browser MCP usage, as a ZIP.")
-                .clicked()
-            {
-                download_browser_skill();
             }
             let mut requested_copy_cards = false;
             let mut requested_paste_cards = false;

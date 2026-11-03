@@ -65,7 +65,7 @@ an existing read-only inspection work.
 
 ## Install the Skill Folder
 
-In the webview, **Download usage skill** downloads `reason-room-skill.zip`.
+In the webview, **File > Download usage skill** downloads `reason-room-skill.zip`.
 Extract it to get the complete `reason-room/` folder, then install that folder
 as described below. The ZIP includes this setup guide and the MCP reference.
 

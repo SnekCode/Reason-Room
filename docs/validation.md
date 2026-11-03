@@ -5,6 +5,16 @@ Update it when a meaningful platform or workflow check changes that scope.
 Use dates and identify the tested revision or change; do not claim a behavior
 was checked just because it exists in the source.
 
+## Webview Skill File Menu — 2026-11-03
+
+Moved the web-only download into **File > Download usage skill**. Launched
+with `./start.sh --web` on port 8081 and confirmed in the in-app browser that
+the top bar no longer has a standalone download button, the File menu exposes
+the command, and clicking it downloads the skill ZIP and closes the menu.
+Formatting, workspace tests/build, strict Clippy, and documentation checks
+passed. This check covers the local browser build; hosted and alternate-browser
+behavior was not rechecked.
+
 ## Webview Skill Download — 2026-11-02
 
 On this Apple Silicon Mac, the supported `./start.sh --web` launcher built

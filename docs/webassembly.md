@@ -21,7 +21,7 @@ JavaScript bindings, copies the page and license, and serves the output on
 Use `INFINITE_NOTE_CANVAS_WEB_PORT=8081 ./start.sh --web` for another port.
 Stop the local server with Ctrl-C.
 
-The web-only **Download usage skill** button downloads `reason-room-skill.zip`.
+The web-only **File > Download usage skill** button downloads `reason-room-skill.zip`.
 Extract the complete `reason-room/` folder into your agent's skill directory.
 The bundle includes installation, MCP tool usage, and the
 [webview MCP workflow](../skills/reason-room/references/setup.md#use-mcp-with-the-webview).
