@@ -52,6 +52,12 @@ See [example authoring and maintenance](examples.md) for the MCP workflow.
 - Use the wheel to zoom around the pointer. Shift plus wheel pans; a middle
   button drag also pans.
 - Select a card, boundary, or relationship to open its inspector.
+- Click a relationship line to hide the other lines temporarily and show
+  **← Source** and **Target →** at the click point. Hover a button to see its
+  endpoint name; click it to center that endpoint without changing zoom.
+  Rolled-up lines navigate to their visible parent endpoints. The buttons close
+  after navigation; click the isolated line again to reopen them. Click empty
+  canvas, select another item, or press Escape to restore the other lines.
 - Choose **Preferences** in the toolbar to change display and creation defaults.
   A fixed, centered dialog opens above all panels on desktop and in the browser.
   Canvas and filter interaction is blocked until you choose Done or press Escape.

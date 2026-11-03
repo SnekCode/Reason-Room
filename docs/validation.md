@@ -263,6 +263,38 @@ platform visual checks remain unverified. Light-mode contrast, the longer
 layer sorting/insertion investigation and boundary text wrapping remain
 separate deferred validation items.
 
+## Relationship Isolation and Endpoint Navigation — 2026-11-02
+
+Following `852eac4`, clicking a relationship line temporarily isolates its
+painted path, labels and direction markers and offers Source/Target buttons at
+the clicked world position. The shared path list also governs hit testing, so
+hidden lines cannot intercept clicks. The buttons pan to the displayed
+endpoint's center without changing zoom or selecting an underlying card;
+rolled-up relationships use the visible parent endpoint. The buttons close
+after navigation while the relationship stays selected and isolated. Clicking
+its line reopens them. Clearing selection, choosing a card/boundary, or Escape
+restores the other lines. Navigation does not edit the workspace or its format.
+
+On Apple Silicon macOS 27.0.1 with Rust 1.97.1, formatting, all 340 workspace
+tests (173 app, 115 canvas, 5 CLI, 47 session), the workspace build, strict
+Clippy, browser release build and documentation checks passed. Deterministic
+pointer tests verify line clicks inside cards open the controls at the clicked
+world point, isolate the path, and preserve card/port interaction priority.
+Both buttons are exercised through egui pointer events and checked for exact
+endpoint centering, unchanged zoom, retained relationship selection, no card
+selection and no saved-file changes. Escape restores the full path list.
+Pure camera tests cover negative world coordinates and minimum/maximum zoom.
+A rolled-up relationship regression checks navigation to the visible parent
+without revealing its hidden child.
+
+Launched with `INFINITE_NOTE_CANVAS_WEB_PORT=8081 ./start.sh --web`. In the local
+in-app browser using the manufacturing example, visually confirmed isolation
+and the two buttons at a line click, then Source navigation with zoom retained
+at 12% and the relationship inspector still selected. Browser Target
+navigation and broad zoom/viewport combinations were not separately verified;
+they have deterministic UI coverage. Native interaction, Windows/Edge and
+hosted deployment were not checked for this change.
+
 ## Remaining Evidence and Known Limits
 
 - Browser `localStorage` failures are not fully handled. Test blocked storage,

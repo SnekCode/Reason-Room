@@ -665,6 +665,7 @@ struct InfiniteNoteCanvasApp {
     lens_creation_draft: LensCreationDraft,
     selected_boundary_id: Option<String>,
     selected_relationship_id: Option<String>,
+    relationship_navigation: Option<RelationshipNavigation>,
     primary_relationship_concept_id: Option<u32>,
     boundary_inspector_draft: Option<BoundaryInspectorDraft>,
     hover_target: Option<CanvasHoverTarget>,
@@ -1160,6 +1161,12 @@ struct CardClipboard {
 }
 
 #[derive(Clone, Debug)]
+struct RelationshipNavigation {
+    relationship_id: String,
+    world_position: Point,
+}
+
+#[derive(Clone, Debug)]
 struct PasteChoice {
     clipboard: CardClipboard,
     anchor: Point,
@@ -1399,6 +1406,7 @@ impl InfiniteNoteCanvasApp {
             },
             selected_boundary_id: None,
             selected_relationship_id: None,
+            relationship_navigation: None,
             primary_relationship_concept_id: None,
             boundary_inspector_draft: None,
             hover_target: None,
@@ -1448,6 +1456,7 @@ impl InfiniteNoteCanvasApp {
         }
         self.selected_boundary_id = None;
         self.selected_relationship_id = None;
+        self.relationship_navigation = None;
         self.boundary_inspector_draft = None;
         let selected_ids: Vec<_> = self.interaction.selected_card_ids().collect();
         for selected_id in selected_ids {
@@ -1475,6 +1484,7 @@ impl InfiniteNoteCanvasApp {
         self.inspector_collapsed = false;
         self.selected_boundary_id = None;
         self.selected_relationship_id = None;
+        self.relationship_navigation = None;
         self.boundary_inspector_draft = None;
         self.side_pane_mode = SidePaneMode::Inspect;
     }
@@ -1490,6 +1500,7 @@ impl InfiniteNoteCanvasApp {
         self.selected_boundary_id = boundary_id;
         self.inspector_collapsed = self.selected_boundary_id.is_none();
         self.selected_relationship_id = None;
+        self.relationship_navigation = None;
         self.inspector_draft = None;
         self.primary_relationship_concept_id = None;
         self.side_pane_mode = SidePaneMode::Inspect;
@@ -1504,6 +1515,7 @@ impl InfiniteNoteCanvasApp {
         self.boundary_inspector_draft = None;
         self.inspector_draft = None;
         self.primary_relationship_concept_id = None;
+        self.relationship_navigation = None;
         self.selected_relationship_id = relationship_id;
         self.inspector_collapsed = self.selected_relationship_id.is_none();
         self.side_pane_mode = SidePaneMode::Inspect;
@@ -3390,6 +3402,7 @@ impl InfiniteNoteCanvasApp {
         };
         self.selected_boundary_id = None;
         self.selected_relationship_id = None;
+        self.relationship_navigation = None;
         self.primary_relationship_concept_id = None;
         self.boundary_inspector_draft = None;
         self.hover_target = None;
@@ -4155,6 +4168,7 @@ impl InfiniteNoteCanvasApp {
         self.show_all_cards = controls.show_all_cards;
         self.roll_up_relationships = controls.roll_up_relationships;
         self.last_canvas_pointer = None;
+        self.relationship_navigation = None;
         self.paste_choice = None;
         self.paste_ghost = None;
         let selected_card = self
@@ -4778,13 +4792,22 @@ impl InfiniteNoteCanvasApp {
         }
         self.clear_noninteractive_canvas_selection();
         let controls_bounds = self.canvas_search_and_filter_controls(ui.ctx(), viewport);
-        self.handle_canvas_input(ui, &response, viewport, viewport_size, controls_bounds);
+        let navigation_bounds = self.relationship_navigation_controls(ui.ctx(), viewport);
+        let over_navigation = ui
+            .input(|input| input.pointer.hover_pos())
+            .is_some_and(|pointer| {
+                navigation_bounds.is_some_and(|bounds| bounds.contains(pointer))
+            });
+        if !over_navigation {
+            self.handle_canvas_input(ui, &response, viewport, viewport_size, controls_bounds);
+        }
         self.paint_canvas(&painter, viewport, viewport_size);
         self.paint_paste_ghost(&painter, viewport);
         if ui.is_enabled()
             && !self.preferences_open()
             && self.paste_choice.is_none()
             && self.paste_ghost.is_none()
+            && !over_navigation
         {
             self.canvas_context_menu(&response, viewport, viewport_size, controls_bounds);
         }
@@ -5097,6 +5120,11 @@ impl InfiniteNoteCanvasApp {
         let relationships: Vec<_> = relationships
             .into_iter()
             .filter(|relationship| {
+                self.selected_relationship_id
+                    .as_ref()
+                    .is_none_or(|selected| *selected == relationship.id)
+            })
+            .filter(|relationship| {
                 self.canvas_concept_id_matches_type_filter(relationship.source_id)
                     && self.canvas_concept_id_matches_type_filter(relationship.target_id)
             })
@@ -5150,6 +5178,100 @@ impl InfiniteNoteCanvasApp {
                 relationship_paint_path(relationship, &path, &screen_boundaries, viewport)
             })
             .collect()
+    }
+
+    /// Uses the endpoints actually displayed on a rolled-up relationship.
+    fn relationship_navigation_endpoints(&self, id: &str) -> Option<(u32, u32)> {
+        if self.semantic_layer_filtering_is_active() {
+            let frame = self.semantic_zoom_frame()?;
+            let relationship = frame
+                .relationships
+                .iter()
+                .find(|relationship| relationship.id == id)?;
+            Some((relationship.source_id, relationship.target_id))
+        } else {
+            self.relationship_by_id(id)
+                .map(|relationship| (relationship.source_id, relationship.target_id))
+        }
+    }
+
+    fn navigate_relationship_endpoint(&mut self, id: &str, source: bool) {
+        let Some((source_id, target_id)) = self.relationship_navigation_endpoints(id) else {
+            return;
+        };
+        let concept_id = if source { source_id } else { target_id };
+        let card = self
+            .dataset
+            .card_by_id(concept_id)
+            .or_else(|| self.session()?.dataset().card_by_id(concept_id));
+        let Some(card) = card else {
+            return;
+        };
+        self.interaction
+            .set_camera(camera_centered_on_relationship_endpoint(
+                self.interaction.camera(),
+                card.bounds,
+                self.canvas_viewport_size,
+            ));
+        self.relationship_navigation = None;
+        self.gesture = None;
+        self.refresh_display_dataset();
+    }
+
+    fn relationship_navigation_controls(
+        &mut self,
+        ctx: &egui::Context,
+        viewport: Rect,
+    ) -> Option<Rect> {
+        let navigation = self.relationship_navigation.clone()?;
+        if self.selected_relationship_id.as_deref() != Some(navigation.relationship_id.as_str()) {
+            self.relationship_navigation = None;
+            return None;
+        }
+        let Some((source_id, target_id)) =
+            self.relationship_navigation_endpoints(&navigation.relationship_id)
+        else {
+            self.relationship_navigation = None;
+            return None;
+        };
+        let point = canvas_point_to_screen(
+            navigation.world_position,
+            self.interaction.camera(),
+            viewport,
+        );
+        let mut chosen = None;
+        let area = egui::Area::new(egui::Id::unique("relationship-endpoint-navigation"))
+            .order(egui::Order::Foreground)
+            .fixed_pos(point)
+            .constrain_to(viewport)
+            .movable(false)
+            .show(ctx, |ui| {
+                if self.preferences_open() || self.paste_choice.is_some() || self.dialog.is_some() {
+                    ui.disable();
+                }
+                egui::Frame::popup(ui.style()).show(ui, |ui| {
+                    ui.horizontal(|ui| {
+                        if ui
+                            .button("← Source")
+                            .on_hover_text(format!("Go to {}", self.concept_label(source_id)))
+                            .clicked()
+                        {
+                            chosen = Some(true);
+                        }
+                        if ui
+                            .button("Target →")
+                            .on_hover_text(format!("Go to {}", self.concept_label(target_id)))
+                            .clicked()
+                        {
+                            chosen = Some(false);
+                        }
+                    });
+                });
+            });
+        if let Some(source) = chosen {
+            self.navigate_relationship_endpoint(&navigation.relationship_id, source);
+        }
+        Some(area.response.rect)
     }
 
     fn relationship_endpoint_screen_bounds(
@@ -5454,7 +5576,12 @@ impl InfiniteNoteCanvasApp {
                     pointer.expect("a viewport position has a pointer position"),
                     viewport,
                 ) {
-                    self.set_relationship_selection(Some(relationship_id));
+                    self.set_relationship_selection(Some(relationship_id.clone()));
+                    self.relationship_navigation = Some(RelationshipNavigation {
+                        relationship_id,
+                        world_position,
+                    });
+                    ui.ctx().request_repaint();
                 } else if let Some(concept_id) = self.filtered_canvas_hit_test(world_position) {
                     let selected_concept_ids: Vec<_> = selected_card_ids.into_iter().collect();
                     let concept_ids = if input.7 {
@@ -7968,6 +8095,12 @@ impl eframe::App for InfiniteNoteCanvasApp {
         self.refresh_external_workspace(ui.ctx());
         self.process_native_menu_request();
         if !self.preferences_open() && ui.input(|input| input.key_pressed(egui::Key::Escape)) {
+            if self.selected_relationship_id.is_some()
+                && self.dialog.is_none()
+                && !ui.ctx().text_edit_focused()
+            {
+                self.set_relationship_selection(None);
+            }
             self.paste_choice = None;
             self.paste_ghost = None;
             self.dialog = None;
@@ -8587,6 +8720,16 @@ fn search_match_index_after_navigation(
         (false, true) => (current_index + 1) % match_count,
         _ => current_index,
     }
+}
+
+/// Relationship navigation pans to the endpoint without changing the user's zoom.
+fn camera_centered_on_relationship_endpoint(
+    mut current: Camera,
+    bounds: CanvasRect,
+    viewport_size: Point,
+) -> Camera {
+    current.center_world_point_in_viewport(bounds.center(), viewport_size);
+    current
 }
 
 /// Centers a search result at a useful inspection scale. The minimum prevents
@@ -10874,7 +11017,9 @@ fn canvas_hover_hint(target: &CanvasHoverTarget) -> &'static str {
         }
         CanvasHoverTarget::RelationshipPort { .. } => "Drag to create a relationship.",
         CanvasHoverTarget::Boundary(_) => "Click to inspect. Drag to move or resize.",
-        CanvasHoverTarget::Relationship(_) => "Click to edit relationship",
+        CanvasHoverTarget::Relationship(_) => {
+            "Click to isolate this relationship and go to either end"
+        }
         CanvasHoverTarget::ScaleLayer(_) => "Click to edit this zoom layer",
         CanvasHoverTarget::ZoomSlider => "Drag to set zoom",
     }
@@ -16935,13 +17080,131 @@ mod tests {
             },
         );
         output.textures_delta.clear();
-        assert_eq!(app.selected_relationship_id, Some(relationship_id));
+        assert_eq!(app.selected_relationship_id, Some(relationship_id.clone()));
+        assert_eq!(app.visible_relationship_paths(viewport).len(), 1);
+        let navigation = app
+            .relationship_navigation
+            .as_ref()
+            .expect("line click opens endpoint controls");
+        assert_eq!(navigation.relationship_id, relationship_id);
+        assert_eq!(navigation.world_position, world);
         assert!(app.interaction.selected_card_ids().next().is_none());
         assert!(
             app.gesture.is_none(),
             "a line click must not start moving the card"
         );
         fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn relationship_navigation_buttons_pan_to_each_end_without_editing_or_selecting_cards() {
+        for (source, label) in [(true, "← Source"), (false, "Target →")] {
+            let (mut app, path) =
+                authored_layers_test_app(&format!("relationship-navigation-{source}"));
+            app.show_all_cards = true;
+            let relationship = app.active_relationships()[0].clone();
+            let viewport = Rect::from_min_size(Pos2::ZERO, Vec2::new(1600.0, 1000.0));
+            app.interaction
+                .set_camera(Camera::new(Point::default(), 0.5));
+            app.refresh_display_dataset();
+            let original_camera = app.interaction.camera();
+            let before = fs::read_to_string(&path).unwrap();
+            let all_count = app.visible_relationship_paths(viewport).len();
+            assert!(all_count > 1);
+            app.set_relationship_selection(Some(relationship.id.clone()));
+            app.relationship_navigation = Some(RelationshipNavigation {
+                relationship_id: relationship.id.clone(),
+                world_position: Point::new(800.0, 700.0),
+            });
+            assert_eq!(app.visible_relationship_paths(viewport).len(), 1);
+            let ctx = egui::Context::default();
+            let render = |app: &mut InfiniteNoteCanvasApp, events| {
+                let mut output = ctx.run_ui(
+                    egui::RawInput {
+                        screen_rect: Some(viewport),
+                        events,
+                        ..Default::default()
+                    },
+                    |ui| app.canvas(ui),
+                );
+                output.textures_delta.clear();
+                output
+            };
+            render(&mut app, vec![]);
+            let output = render(&mut app, vec![]);
+            let button = layer_test_text_position(&output, label);
+            for pressed in [true, false] {
+                render(
+                    &mut app,
+                    vec![
+                        egui::Event::PointerMoved(button),
+                        layer_test_pointer(button, pressed),
+                    ],
+                );
+            }
+            assert!(app.relationship_navigation.is_none());
+            assert_eq!(
+                app.selected_relationship_id.as_deref(),
+                Some(relationship.id.as_str())
+            );
+            assert!(
+                app.interaction.selected_card_ids().next().is_none(),
+                "buttons must not select cards underneath"
+            );
+            assert_eq!(app.interaction.camera().scale, original_camera.scale);
+            let id = if source {
+                relationship.source_id
+            } else {
+                relationship.target_id
+            };
+            let center = app
+                .session()
+                .unwrap()
+                .dataset()
+                .card_by_id(id)
+                .unwrap()
+                .bounds
+                .center();
+            let screen = app.interaction.camera().world_to_screen(center);
+            assert!((screen.x - app.canvas_viewport_size.x * 0.5).abs() < 0.001);
+            assert!((screen.y - app.canvas_viewport_size.y * 0.5).abs() < 0.001);
+            assert_eq!(fs::read_to_string(&path).unwrap(), before);
+            let mut frame = eframe::Frame::_new_kittest();
+            let mut output = ctx.run_ui(
+                egui::RawInput {
+                    screen_rect: Some(viewport),
+                    events: vec![egui::Event::Key {
+                        key: egui::Key::Escape,
+                        physical_key: None,
+                        pressed: true,
+                        repeat: false,
+                        modifiers: egui::Modifiers::NONE,
+                    }],
+                    ..Default::default()
+                },
+                |ui| eframe::App::ui(&mut app, ui, &mut frame),
+            );
+            output.textures_delta.clear();
+            assert!(app.selected_relationship_id.is_none());
+            app.interaction.set_camera(original_camera);
+            assert_eq!(app.visible_relationship_paths(viewport).len(), all_count);
+            assert_eq!(fs::read_to_string(&path).unwrap(), before);
+            fs::remove_file(path).unwrap();
+        }
+    }
+
+    #[test]
+    fn relationship_endpoint_camera_preserves_zoom_and_centers_arbitrary_world_bounds() {
+        let bounds = CanvasRect::new(Point::new(-2500.0, 1300.0), Point::new(720.0, 240.0));
+        let viewport = Point::new(950.0, 680.0);
+        for scale in [MIN_SCALE, 0.5, 1.0, MAX_SCALE] {
+            let before = Camera::new(Point::new(83.0, -42.0), scale);
+            let after = camera_centered_on_relationship_endpoint(before, bounds, viewport);
+            assert_eq!(after.scale, before.scale);
+            let screen = after.world_to_screen(bounds.center());
+            assert!((screen.x - viewport.x * 0.5).abs() < 0.01);
+            assert!((screen.y - viewport.y * 0.5).abs() < 0.01);
+        }
     }
 
     #[test]
@@ -17353,6 +17616,22 @@ mod tests {
                 .route(1, 4)
                 .unwrap(),
             route
+        );
+        app.canvas_viewport_size = Point::new(1400.0, 900.0);
+        assert_eq!(
+            app.relationship_navigation_endpoints("rolled"),
+            Some((1, 4))
+        );
+        app.set_relationship_selection(Some("rolled".into()));
+        app.navigate_relationship_endpoint("rolled", true);
+        let center = app.dataset.card_by_id(1).unwrap().bounds.center();
+        assert_eq!(
+            app.interaction.camera().world_to_screen(center),
+            Point::new(700.0, 450.0)
+        );
+        assert!(
+            app.dataset.card_by_id(2).is_none(),
+            "navigation must not reveal the hidden child"
         );
         fs::remove_file(path).unwrap();
     }
@@ -17769,6 +18048,7 @@ mod tests {
             },
             selected_boundary_id: None,
             selected_relationship_id: None,
+            relationship_navigation: None,
             primary_relationship_concept_id: None,
             boundary_inspector_draft: None,
             hover_target: None,
