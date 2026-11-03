@@ -6593,6 +6593,123 @@ impl InfiniteNoteCanvasApp {
         }
     }
 
+    /// Renders the creation form at its selected insertion slot.
+    fn inline_layer_creation_form(&mut self, ui: &mut egui::Ui) -> bool {
+        let reveal_form = self.pending_creation_name_focus == Some(CreationNameFocus::Layer);
+        let form_top = ui.cursor().min;
+        ui.add_space(8.0);
+        let mut create_requested = false;
+        let mut cancel_requested = false;
+        authoring_pane(
+            ui,
+            "Create zoom layer",
+            "Set the range where this level of detail is visible.",
+            |ui| {
+                inspector_field_label(ui, "Name", None);
+                let title_id = ui.make_persistent_id("create-zoom-layer-name");
+                let title_has_focus = ui
+                    .add_sized(
+                        Vec2::new(ui.available_width(), ui.spacing().interact_size.y),
+                        egui::TextEdit::singleline(&mut self.layer_creation_title).id(title_id),
+                    )
+                    .has_focus();
+                if self.pending_creation_name_focus == Some(CreationNameFocus::Layer) {
+                    ui.memory_mut(|memory| memory.request_focus(title_id));
+                    self.pending_creation_name_focus = None;
+                }
+                ui.add_space(8.0);
+                ui.horizontal_wrapped(|ui| {
+                    ui.label("Start");
+                    ui.add(
+                        egui::DragValue::new(&mut self.layer_creation_active_zoom_start_percent)
+                            .update_while_editing(false)
+                            .range(1.0..=409_600.0)
+                            .speed(1.0)
+                            .suffix("%"),
+                    );
+                    ui.label("End");
+                    ui.add(
+                        egui::DragValue::new(&mut self.layer_creation_active_zoom_end_percent)
+                            .update_while_editing(false)
+                            .range(1.0..=409_600.0)
+                            .speed(1.0)
+                            .suffix("%"),
+                    );
+                });
+                ui.horizontal_wrapped(|ui| {
+                    ui.label("Fade");
+                    ui.add(
+                        egui::DragValue::new(&mut self.layer_creation_fade_percent)
+                            .update_while_editing(false)
+                            .range(0.0..=409_599.0)
+                            .speed(1.0)
+                            .suffix(" pp"),
+                    );
+                });
+                ui.add_space(10.0);
+                ui.horizontal_wrapped(|ui| {
+                    create_requested = ui.add(primary_button("Create layer")).clicked()
+                        || consume_command_enter_for_focused_input(ui.ctx(), title_has_focus);
+                    cancel_requested = ui.button("Cancel").clicked();
+                });
+            },
+        );
+
+        if reveal_form {
+            ui.scroll_to_rect(Rect::from_min_max(form_top, ui.min_rect().max), None);
+        }
+
+        if cancel_requested {
+            self.layer_cross_section_creating = false;
+        }
+        if create_requested {
+            if self.layer_creation_title.trim().is_empty() {
+                self.set_failure("LAYER NOT SAVED", "A layer name cannot be empty.");
+            } else {
+                let title = self.layer_creation_title.clone();
+                let percent_settings = SemanticZoomLayerPercentSettings {
+                    active_zoom_range: ZoomPercentRange {
+                        start_percent: self.layer_creation_active_zoom_start_percent,
+                        end_percent: self.layer_creation_active_zoom_end_percent,
+                    },
+                    fade_percent: self.layer_creation_fade_percent,
+                };
+                let creating_base_layer = self.layer_cross_section_drafts.is_empty();
+                let insertion_index = self.layer_creation_index;
+                let staged = self.stage_action(|session| {
+                    if creating_base_layer {
+                        session
+                            .stage_create_semantic_zoom_base_layer_with_percent_settings(
+                                title,
+                                percent_settings,
+                            )
+                            .map_err(|error| error.to_string())
+                    } else {
+                        session
+                            .stage_create_semantic_zoom_layer_at(
+                                title,
+                                percent_settings,
+                                insertion_index,
+                            )
+                            .map_err(|error| error.to_string())
+                    }
+                });
+                let layer_id = staged
+                    .as_ref()
+                    .ok()
+                    .and_then(|staged| staged_semantic_zoom_layer_id_at(staged, insertion_index));
+                self.commit_staged_action(staged, None, false, "Created a zoom layer.");
+                self.layer_cross_section_creating = false;
+                self.open_layer_cross_section();
+                if let Some(layer_id) = layer_id {
+                    self.select_semantic_zoom_layer(layer_id);
+                }
+                return true;
+            }
+        }
+        false
+    }
+
     fn semantic_zoom_layer_cross_section(&mut self, ui: &mut egui::Ui) {
         if self.layer_cross_section_drafts.is_empty() {
             self.open_layer_cross_section();
@@ -6643,111 +6760,11 @@ impl InfiniteNoteCanvasApp {
                 paint_layer_cross_section_master_track(ui.painter(), track);
             });
 
-        if self.layer_cross_section_creating {
-            ui.add_space(8.0);
-            let mut create_requested = false;
-            let mut cancel_requested = false;
-            authoring_pane(
-                ui,
-                "Create zoom layer",
-                "Set the range where this level of detail is visible.",
-                |ui| {
-                    inspector_field_label(ui, "Name", None);
-                    let title_id = ui.make_persistent_id("create-zoom-layer-name");
-                    let title_has_focus = ui
-                        .add_sized(
-                            Vec2::new(ui.available_width(), ui.spacing().interact_size.y),
-                            egui::TextEdit::singleline(&mut self.layer_creation_title).id(title_id),
-                        )
-                        .has_focus();
-                    if self.pending_creation_name_focus == Some(CreationNameFocus::Layer) {
-                        ui.memory_mut(|memory| memory.request_focus(title_id));
-                        self.pending_creation_name_focus = None;
-                    }
-                    ui.add_space(8.0);
-                    ui.horizontal_wrapped(|ui| {
-                        ui.label("Start");
-                        ui.add(
-                            egui::DragValue::new(
-                                &mut self.layer_creation_active_zoom_start_percent,
-                            )
-                            .range(1.0..=409_600.0)
-                            .speed(1.0)
-                            .suffix("%"),
-                        );
-                        ui.label("End");
-                        ui.add(
-                            egui::DragValue::new(&mut self.layer_creation_active_zoom_end_percent)
-                                .range(1.0..=409_600.0)
-                                .speed(1.0)
-                                .suffix("%"),
-                        );
-                    });
-                    ui.horizontal_wrapped(|ui| {
-                        ui.label("Fade");
-                        ui.add(
-                            egui::DragValue::new(&mut self.layer_creation_fade_percent)
-                                .range(0.0..=409_599.0)
-                                .speed(1.0)
-                                .suffix(" pp"),
-                        );
-                    });
-                    ui.add_space(10.0);
-                    ui.horizontal_wrapped(|ui| {
-                        create_requested = ui.add(primary_button("Create layer")).clicked()
-                            || consume_command_enter_for_focused_input(ui.ctx(), title_has_focus);
-                        cancel_requested = ui.button("Cancel").clicked();
-                    });
-                },
-            );
-
-            if cancel_requested {
-                self.layer_cross_section_creating = false;
-            }
-            if create_requested {
-                if self.layer_creation_title.trim().is_empty() {
-                    self.set_failure("LAYER NOT SAVED", "A layer name cannot be empty.");
-                } else {
-                    let title = self.layer_creation_title.clone();
-                    let percent_settings = SemanticZoomLayerPercentSettings {
-                        active_zoom_range: ZoomPercentRange {
-                            start_percent: self.layer_creation_active_zoom_start_percent,
-                            end_percent: self.layer_creation_active_zoom_end_percent,
-                        },
-                        fade_percent: self.layer_creation_fade_percent,
-                    };
-                    let creating_base_layer = self.layer_cross_section_drafts.is_empty();
-                    let insertion_index = self.layer_creation_index;
-                    let staged = self.stage_action(|session| {
-                        if creating_base_layer {
-                            session
-                                .stage_create_semantic_zoom_base_layer_with_percent_settings(
-                                    title,
-                                    percent_settings,
-                                )
-                                .map_err(|error| error.to_string())
-                        } else {
-                            session
-                                .stage_create_semantic_zoom_layer_at(
-                                    title,
-                                    percent_settings,
-                                    insertion_index,
-                                )
-                                .map_err(|error| error.to_string())
-                        }
-                    });
-                    let layer_id = staged.as_ref().ok().and_then(|staged| {
-                        staged_semantic_zoom_layer_id_at(staged, insertion_index)
-                    });
-                    self.commit_staged_action(staged, None, false, "Created a zoom layer.");
-                    self.layer_cross_section_creating = false;
-                    self.open_layer_cross_section();
-                    if let Some(layer_id) = layer_id {
-                        self.select_semantic_zoom_layer(layer_id);
-                    }
-                    return;
-                }
-            }
+        if self.layer_cross_section_drafts.is_empty()
+            && self.layer_cross_section_creating
+            && self.inline_layer_creation_form(ui)
+        {
+            return;
         }
 
         if self.layer_cross_section_drafts.is_empty()
@@ -6762,7 +6779,7 @@ impl InfiniteNoteCanvasApp {
             return;
         }
 
-        ui.small("Range changes save automatically.");
+        ui.small("Typed changes save on Enter or when you leave the field.");
         let mut auto_save_drafts = BTreeMap::new();
         let mut reorder_request = None;
         let mut range_link_requests = Vec::new();
@@ -6776,6 +6793,12 @@ impl InfiniteNoteCanvasApp {
                 self.layer_creation_active_zoom_start_percent = target.active_zoom_start_percent;
                 self.layer_creation_active_zoom_end_percent =
                     target.active_zoom_start_percent + width;
+            }
+            if self.layer_cross_section_creating
+                && self.layer_creation_index == target_index
+                && self.inline_layer_creation_form(ui)
+            {
+                return;
             }
             let previous_end_percent = target_index
                 .checked_sub(1)
@@ -6818,13 +6841,11 @@ impl InfiniteNoteCanvasApp {
                             ui.label("Drag");
                         },
                     );
-                    let title_changed = ui
-                        .add_sized(
-                            Vec2::new((ui.available_width() * 0.58).max(120.0), 24.0),
-                            egui::TextEdit::singleline(&mut draft.title),
-                        )
-                        .changed();
-                    if title_changed {
+                    let title_response = ui.add_sized(
+                        Vec2::new((ui.available_width() * 0.58).max(120.0), 24.0),
+                        egui::TextEdit::singleline(&mut draft.title),
+                    );
+                    if title_response.lost_focus() {
                         auto_save_drafts.insert(draft.layer_id.clone(), draft.clone());
                     }
                     if active {
@@ -6858,6 +6879,7 @@ impl InfiniteNoteCanvasApp {
                         let start_changed = ui
                             .add(
                                 egui::DragValue::new(&mut draft.active_zoom_start_percent)
+                                    .update_while_editing(false)
                                     .range(1.0..=409_600.0)
                                     .speed(1.0)
                                     .suffix("%"),
@@ -6867,6 +6889,7 @@ impl InfiniteNoteCanvasApp {
                         let end_changed = ui
                             .add(
                                 egui::DragValue::new(&mut draft.active_zoom_end_percent)
+                                    .update_while_editing(false)
                                     .range(1.0..=409_600.0)
                                     .speed(1.0)
                                     .suffix("%"),
@@ -6891,6 +6914,7 @@ impl InfiniteNoteCanvasApp {
                         let fade_changed = ui
                             .add(
                                 egui::DragValue::new(&mut draft.fade_percent)
+                                    .update_while_editing(false)
                                     .range(0.0..=409_599.0)
                                     .speed(1.0)
                                     .suffix(" pp"),
@@ -6903,6 +6927,7 @@ impl InfiniteNoteCanvasApp {
                         let card_scale_changed = ui
                             .add(
                                 egui::DragValue::new(&mut draft.card_scale)
+                                    .update_while_editing(false)
                                     .range(0.1..=4.0)
                                     .speed(0.05),
                             )
@@ -6939,6 +6964,13 @@ impl InfiniteNoteCanvasApp {
                 self.layer_creation_active_zoom_end_percent = last.active_zoom_end_percent
                     + (last.active_zoom_end_percent - last.active_zoom_start_percent).max(1.0);
             }
+        }
+
+        if self.layer_cross_section_creating
+            && self.layer_creation_index == self.layer_cross_section_drafts.len()
+            && self.inline_layer_creation_form(ui)
+        {
+            return;
         }
 
         for (target_index, boundary_percent, set_start) in range_link_requests {
@@ -16838,6 +16870,12 @@ mod tests {
         app.layer_creation_title = "Inserted through UI".to_string();
         let form = frame(&mut app, vec![]);
         let create = text_positions(&form, "Create layer")[0];
+        let overview = text_positions(&form, "50% to 100%. Fade: 10 percentage points.")[0];
+        let detail = text_positions(&form, "150% to 200%. Fade: 10 percentage points.")[0];
+        assert!(
+            overview.y < create.y && create.y < detail.y,
+            "creation form must stay between the selected neighboring rows"
+        );
         for pressed in [true, false] {
             let _ = frame(
                 &mut app,
@@ -16868,6 +16906,171 @@ mod tests {
             ZoomPercentRange {
                 start_percent: 200.0,
                 end_percent: 250.0
+            }
+        );
+        fs::remove_file(path).unwrap();
+    }
+
+    fn layer_test_frame(
+        ctx: &egui::Context,
+        app: &mut InfiniteNoteCanvasApp,
+        events: Vec<egui::Event>,
+    ) -> egui::FullOutput {
+        let mut output = ctx.run_ui(
+            egui::RawInput {
+                screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(600.0, 1600.0))),
+                events,
+                ..Default::default()
+            },
+            |ui| app.semantic_zoom_layer_cross_section(ui),
+        );
+        output.textures_delta.clear();
+        output
+    }
+
+    fn layer_test_text_position(output: &egui::FullOutput, label: &str) -> Pos2 {
+        output
+            .shapes
+            .iter()
+            .find_map(|shape| {
+                if let egui::Shape::Text(text) = &shape.shape
+                    && text.galley.job.text == label
+                {
+                    Some(text.pos + text.galley.size() * 0.5)
+                } else {
+                    None
+                }
+            })
+            .unwrap_or_else(|| panic!("missing layer text: {label}"))
+    }
+
+    fn layer_test_pointer(pos: Pos2, pressed: bool) -> egui::Event {
+        egui::Event::PointerButton {
+            pos,
+            button: PointerButton::Primary,
+            pressed,
+            modifiers: egui::Modifiers::NONE,
+        }
+    }
+
+    #[test]
+    fn layer_end_typing_saves_only_on_blur_or_enter() {
+        for finish in [None, Some(egui::Key::Enter)] {
+            let (mut app, path) = authored_layers_test_app(&format!("typing-{finish:?}"));
+            app.open_layer_cross_section();
+            let ctx = egui::Context::default();
+            let initial = layer_test_frame(&ctx, &mut app, vec![]);
+            let end = layer_test_text_position(&initial, "200");
+            for pressed in [true, false] {
+                layer_test_frame(
+                    &ctx,
+                    &mut app,
+                    vec![
+                        egui::Event::PointerMoved(end),
+                        layer_test_pointer(end, pressed),
+                    ],
+                );
+            }
+            layer_test_frame(&ctx, &mut app, vec![]);
+            let before = fs::read_to_string(&path).unwrap();
+            // Incomplete "2" must neither save nor pull Start down from 150%.
+            for text in ["2", "5", "0"] {
+                layer_test_frame(&ctx, &mut app, vec![egui::Event::Text(text.to_string())]);
+                assert_eq!(fs::read_to_string(&path).unwrap(), before);
+                assert_eq!(
+                    app.layer_cross_section_drafts[1].active_zoom_start_percent,
+                    150.0
+                );
+            }
+            if let Some(key) = finish {
+                layer_test_frame(
+                    &ctx,
+                    &mut app,
+                    vec![egui::Event::Key {
+                        key,
+                        physical_key: None,
+                        pressed: true,
+                        repeat: false,
+                        modifiers: egui::Modifiers::NONE,
+                    }],
+                );
+            } else {
+                let blank = Pos2::new(550.0, 1500.0);
+                for pressed in [true, false] {
+                    layer_test_frame(
+                        &ctx,
+                        &mut app,
+                        vec![
+                            egui::Event::PointerMoved(blank),
+                            layer_test_pointer(blank, pressed),
+                        ],
+                    );
+                }
+            }
+            layer_test_frame(&ctx, &mut app, vec![]);
+            let saved = WorkspaceDocument::parse_json(&fs::read_to_string(&path).unwrap()).unwrap();
+            let range = saved.current_state.lenses[0].semantic_zoom_layers[1]
+                .percent_settings
+                .unwrap()
+                .active_zoom_range;
+            assert_eq!(range.start_percent, 150.0);
+            assert_eq!(range.end_percent, 250.0);
+            fs::remove_file(path).unwrap();
+        }
+    }
+
+    #[test]
+    fn dragging_layer_onto_first_row_persists_existing_range_slots() {
+        let (mut app, path) = authored_layers_test_app("drag-first-row");
+        app.open_layer_cross_section();
+        let ctx = egui::Context::default();
+        let initial = layer_test_frame(&ctx, &mut app, vec![]);
+        let target = layer_test_text_position(&initial, "Drag");
+        let source = initial
+            .shapes
+            .iter()
+            .filter_map(|shape| {
+                if let egui::Shape::Text(text) = &shape.shape
+                    && text.galley.job.text == "Drag"
+                {
+                    Some(text.pos + text.galley.size() * 0.5)
+                } else {
+                    None
+                }
+            })
+            .nth(1)
+            .unwrap();
+        layer_test_frame(
+            &ctx,
+            &mut app,
+            vec![
+                egui::Event::PointerMoved(source),
+                layer_test_pointer(source, true),
+            ],
+        );
+        layer_test_frame(
+            &ctx,
+            &mut app,
+            vec![egui::Event::PointerMoved(source + Vec2::new(0.0, -12.0))],
+        );
+        layer_test_frame(&ctx, &mut app, vec![egui::Event::PointerMoved(target)]);
+        layer_test_frame(&ctx, &mut app, vec![layer_test_pointer(target, false)]);
+        let saved = WorkspaceDocument::parse_json(&fs::read_to_string(&path).unwrap()).unwrap();
+        let layers = &saved.current_state.lenses[0].semantic_zoom_layers;
+        assert_eq!(layers[0].title, "Detail");
+        assert_eq!(
+            layers[0].percent_settings.unwrap().active_zoom_range,
+            ZoomPercentRange {
+                start_percent: 50.0,
+                end_percent: 100.0
+            }
+        );
+        assert_eq!(layers[1].title, "Overview");
+        assert_eq!(
+            layers[1].percent_settings.unwrap().active_zoom_range,
+            ZoomPercentRange {
+                start_percent: 150.0,
+                end_percent: 200.0
             }
         );
         fs::remove_file(path).unwrap();

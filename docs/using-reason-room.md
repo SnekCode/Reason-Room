@@ -142,15 +142,21 @@ Visibility still follows the active View and zoom layers.
 ## Work with Zoom Layers
 
 Open **Layers** and choose **+ Create layer here** at the desired position in
-the list. Enter the name and range, then create it. Later ranges shift when
+the list. The creation form opens directly at that insertion point. Enter the
+name and range, then create it. Later ranges shift when
 needed to make room, retaining their widths. **Create → Zoom layer** opens a
 new layer draft after the existing layers. Layers belong to one View. Their
 active ranges and fade distances use zoom percentages: 100 means normal scale,
 while 25 means a quarter of that scale.
 
-Drag a layer to another row to reorder it. Its range moves before or after the
-target range according to the move direction while retaining its width. For
-example, moving 150–200% above 100–150% makes the moved layer 50–100%.
+Typed layer settings save when you press Enter or leave the field, so partial
+numbers do not change the saved range. Dragging a numeric control still updates
+its value directly.
+
+Drag a layer to another row to reorder it. The existing zoom ranges stay in
+their list positions, and the reordered layers take those ranges. For example,
+moving Detail (85–200%) above Process (24–85%) gives Detail 24–85% and Process
+85–200%. Layer membership, fade and card size stay with the named layer.
 
 A card can use Automatic placement into a layer based on its displayed size,
 or Manual selection of named layers. These are presentation choices, not

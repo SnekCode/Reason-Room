@@ -2115,7 +2115,8 @@ impl WorkspaceDocument {
     }
 
     /// Moves one saved zoom layer to a new position in its Lens presentation
-    /// order. Layer IDs and membership remain unchanged.
+    /// order. Existing zoom ranges stay in their ordinal slots; layer IDs,
+    /// membership, fade and card scale move with the layer.
     pub fn reorder_semantic_zoom_layer(
         &mut self,
         version_id: &str,
@@ -2143,39 +2144,31 @@ impl WorkspaceDocument {
             ));
         }
         if source_index != destination_index {
-            let target = layers[destination_index]
-                .percent_settings
-                .unwrap_or_else(|| {
-                    percent_settings_from_legacy_fades(
-                        layers[destination_index].fade_in,
-                        layers[destination_index].fade_out,
-                    )
+            // Reordering changes which layer occupies each range, rather than
+            // trying to fit the dragged range outside the target. This also
+            // handles the first slot, unequal widths, gaps and overlapping ranges.
+            let ranges: Vec<_> = layers
+                .iter()
+                .map(|layer| {
+                    layer
+                        .percent_settings
+                        .unwrap_or_else(|| {
+                            percent_settings_from_legacy_fades(layer.fade_in, layer.fade_out)
+                        })
+                        .active_zoom_range
                 })
-                .active_zoom_range;
-            let mut layer = layers.remove(source_index);
-            let mut settings = layer.percent_settings.unwrap_or_else(|| {
-                percent_settings_from_legacy_fades(layer.fade_in, layer.fade_out)
-            });
-            let width =
-                settings.active_zoom_range.end_percent - settings.active_zoom_range.start_percent;
-            let start = if destination_index < source_index {
-                target.start_percent - width
-            } else {
-                target.end_percent
-            };
-            if start < 1.0 {
-                return validation(
-                    "Not enough zoom range before this layer; move its start first.".to_string(),
-                );
-            }
-            settings.active_zoom_range = ZoomPercentRange {
-                start_percent: start,
-                end_percent: start + width,
-            };
-            layer.percent_settings = Some(settings);
-            layer.fade_in = None;
-            layer.fade_out = None;
+                .collect();
+            let layer = layers.remove(source_index);
             layers.insert(destination_index, layer);
+            for (layer, range) in layers.iter_mut().zip(ranges) {
+                let mut settings = layer.percent_settings.unwrap_or_else(|| {
+                    percent_settings_from_legacy_fades(layer.fade_in, layer.fade_out)
+                });
+                settings.active_zoom_range = range;
+                layer.percent_settings = Some(settings);
+                layer.fade_in = None;
+                layer.fade_out = None;
+            }
         }
         candidate.validate()?;
         *self = candidate;
@@ -7823,7 +7816,7 @@ mod authored_layer_regressions {
     }
 
     #[test]
-    fn reorder_moves_the_dragged_range_before_target_without_changing_width() {
+    fn reorder_assigns_existing_range_slots_to_the_new_layer_order() {
         let mut document = WorkspaceDocument::sample();
         let first = add_layer(&mut document, "First", 100.0, 150.0);
         let second = add_layer(&mut document, "Second", 150.0, 200.0);
@@ -7840,8 +7833,8 @@ mod authored_layer_regressions {
         assert_eq!(
             range,
             ZoomPercentRange {
-                start_percent: 50.0,
-                end_percent: 100.0
+                start_percent: 100.0,
+                end_percent: 150.0
             }
         );
         assert_eq!(
@@ -7850,10 +7843,80 @@ mod authored_layer_regressions {
                 .unwrap()
                 .active_zoom_range,
             ZoomPercentRange {
-                start_percent: 100.0,
-                end_percent: 150.0
+                start_percent: 150.0,
+                end_percent: 200.0
             }
         );
+    }
+
+    #[test]
+    fn reorder_handles_all_destinations_and_preserves_range_slots_and_layer_properties() {
+        for ranges in [
+            [(1.0, 24.0), (24.0, 85.0), (85.0, 200.0)],
+            [(1.0, 24.0), (30.0, 85.0), (80.0, 409_600.0)],
+        ] {
+            let mut original = WorkspaceDocument::sample();
+            for (index, (start, end)) in ranges.into_iter().enumerate() {
+                let id = add_layer(&mut original, &format!("Layer {index}"), start, end);
+                let layer = original.current_state.lenses[0]
+                    .semantic_zoom_layers
+                    .iter_mut()
+                    .find(|layer| layer.id == id)
+                    .unwrap();
+                layer.card_scale = 0.5 + index as f32;
+                layer.percent_settings.as_mut().unwrap().fade_percent = index as f32;
+            }
+            let before = original.current_state.lenses[0]
+                .semantic_zoom_layers
+                .clone();
+            for source in 0..3 {
+                for destination in 0..3 {
+                    let mut document = original.clone();
+                    document
+                        .reorder_semantic_zoom_layer(
+                            "current",
+                            "organization-landscape",
+                            &before[source].id,
+                            destination,
+                        )
+                        .unwrap();
+                    let mut expected = before.clone();
+                    let moved = expected.remove(source);
+                    expected.insert(destination, moved);
+                    for (layer, slot) in expected.iter_mut().zip(&before) {
+                        layer.percent_settings.as_mut().unwrap().active_zoom_range =
+                            slot.percent_settings.unwrap().active_zoom_range;
+                    }
+                    assert_eq!(
+                        document.current_state.lenses[0].semantic_zoom_layers,
+                        expected
+                    );
+                    let saved = document.to_pretty_json().unwrap();
+                    assert_eq!(WorkspaceDocument::parse_json(&saved).unwrap(), document);
+                    document
+                        .reorder_semantic_zoom_layer(
+                            "current",
+                            "organization-landscape",
+                            &before[source].id,
+                            source,
+                        )
+                        .unwrap();
+                    assert_eq!(document, original);
+                }
+            }
+            let unchanged = original.clone();
+            assert!(
+                original
+                    .reorder_semantic_zoom_layer(
+                        "current",
+                        "organization-landscape",
+                        &before[0].id,
+                        3,
+                    )
+                    .is_err()
+            );
+            assert_eq!(original, unchanged);
+        }
     }
 
     #[test]

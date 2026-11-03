@@ -181,6 +181,37 @@ test passed epoch, day-boundary, leap-year and century cases (`rustc --edition=2
 --test crates/app/build.rs`). No app, browser or server was launched; interactive
 placement and hosted-page verification remain for the user's evaluation.
 
+## Layers Pane Repair — 2026-11-02
+
+Following `49a2895`, the creation form renders at the selected insertion slot
+and scrolls into view. Typed numeric layer settings update on Enter or when
+the field loses focus, rather than saving partial keystrokes. Numeric dragging
+still updates directly. Reordering moves named layers through the existing
+range slots; it no longer tries to fit a range before the first layer. For
+example, moving Detail (85–200%) above Process (24–85%) gives Detail 24–85%
+and Process 85–200%. Membership, fade and card size stay with the named layer.
+This supersedes the earlier reorder-width acceptance criterion above.
+
+On Apple Silicon macOS 27.0.1 with Rust 1.97.1, formatting, all 331 workspace
+tests (167 app, 113 canvas, 5 CLI and 46 session), the workspace build, strict
+Clippy and the browser release build passed. Deterministic UI tests check
+creation-form position and persisted insertion, partial number entry followed
+by blur/Enter, and pointer dragging to the first row with persisted readback.
+Model checks exercise every source/destination pair across three layers,
+including unequal widths, a 1% first start, the maximum end, gaps, overlaps,
+round-trip serialization, reverse moves and invalid-index atomic rejection.
+
+Launched through `INFINITE_NOTE_CANVAS_WEB_PORT=8081 ./start.sh --web` because
+port 8080 was occupied. In the local in-app browser, visually confirmed the
+creation form opened between the clicked neighboring rows and scrolled into
+view; Cancel dismissed it. Typed `2` into Detail's End field and observed that
+the saved 85% start and range summary stayed unchanged. Completed `200`, clicked
+away, and observed 85–200%. Dragged Detail above Process and observed the
+24–85% / 85–200% range exchange with a successful save. These checks used the
+fictional manufacturing example in browser-local storage. Native interaction,
+Windows/Edge, deployed hosting and a broad drag/scroll platform matrix were
+not checked.
+
 ## Remaining Evidence and Known Limits
 
 - Browser `localStorage` failures are not fully handled. Test blocked storage,
